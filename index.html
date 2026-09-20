@@ -327,31 +327,10 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&a
 const $ = (sel, root) => (root || document).querySelector(sel);
 const HOJE = new Date();
 
-function dataISOsegura(v) {
-  if (!v) return "";
-  const s = String(v).trim();
-  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return `${m[1]}-${String(+m[2]).padStart(2,"0")}-${String(+m[3]).padStart(2,"0")}`;
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) {
-    const y=d.getFullYear(), mo=String(d.getMonth()+1).padStart(2,"0"), da=String(d.getDate()).padStart(2,"0");
-    return `${y}-${mo}-${da}`;
-  }
-  return s.slice(0,10);
-}
-function compISOsegura(v) {
-  if (!v) return "";
-  const s = String(v).trim();
-  const m = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?/);
-  if (m) return `${m[1]}-${String(+m[2]).padStart(2,"0")}`;
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-  return s.slice(0,7);
-}
-function dBR(iso) { const s=dataISOsegura(iso); if (!s) return "—"; const [y,m,d]=s.split("-"); return d&&m&&y ? `${d}/${m}/${y}` : "—"; }
-function dHora(iso) { const dt = new Date(iso); return isNaN(dt.getTime()) ? "—" : dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
-function compLabel(c) { const s=compISOsegura(c); const [y,m]=s.split("-"); return y&&m ? `${m}/${y}` : "—"; }
-function compNome(c) { c=compISOsegura(c);
+function dBR(iso) { if (!iso) return "—"; const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}/${m}/${y}`; }
+function dHora(iso) { const dt = new Date(iso); return dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+function compLabel(c) { const [y, m] = c.split("-"); return `${m}/${y}`; }
+function compNome(c) {
   const nomes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   const [y, m] = c.split("-"); return `${nomes[+m - 1]} de ${y}`;
 }
@@ -368,8 +347,8 @@ function compParaFechar() {
   return prox < alvo ? prox : alvo;
 }
 function vencimentoDe(comp, dia) { return compProx(comp) + "-" + String(dia).padStart(2, "0"); }
-function compProx(c) { c=compISOsegura(c); const [y, m] = c.split("-").map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`; }
-function compAnt(c) { c=compISOsegura(c); const [y, m] = c.split("-").map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`; }
+function compProx(c) { const [y, m] = c.split("-").map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`; }
+function compAnt(c) { const [y, m] = c.split("-").map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`; }
 function hojeISO() { return HOJE.toISOString().slice(0, 10); }
 function agora() { return new Date(Date.now()).toISOString(); }
 function kb(bytes) { return bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024)) + " KB" : (bytes / 1048576).toFixed(1) + " MB"; }
@@ -628,83 +607,104 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxkh62wKQXgV6b01KizKFZd
 let S = null;
 let EU = null, MODO = "sheets";
 let gravando = false, gravarDeNovo = false, timerGravar = null, rev = 0, revGravada = 0;
-let ultimaSync = null, timerSelo = null;
+let ultimaSync = null, timerSelo = null, ultimoErro = "";
 
+/* Os arquivos enviados ficam no navegador de quem enviou: a planilha guarda só o registro. */
+const CACHE_ARQ = KEY + "_arquivos";
+function guardaArquivoLocal(id, dataUrl) {
+  if (!dataUrl) return;
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_ARQ) || "{}");
+    c[id] = dataUrl;
+    const ids = Object.keys(c);
+    while (ids.length > 12) delete c[ids.shift()];
+    localStorage.setItem(CACHE_ARQ, JSON.stringify(c));
+  } catch (e) { }
+}
+function arquivoLocal(id) {
+  try { return (JSON.parse(localStorage.getItem(CACHE_ARQ) || "{}"))[id] || null; } catch (e) { return null; }
+}
 function estadoParaCompartilhar() {
   const copia = JSON.parse(JSON.stringify(S));
   delete copia.ui;
-  (copia.comprovantes || []).forEach(c => { if (c.dataUrl) { c.dataUrl = null; c.semPreview = true; } });
+  (copia.comprovantes || []).forEach(c => { if (c.dataUrl) { guardaArquivoLocal(c.id, c.dataUrl); c.dataUrl = null; c.semPreview = true; } });
+  (copia.documentos || []).forEach(d => { if (d.dataUrl) { guardaArquivoLocal(d.id, d.dataUrl); d.dataUrl = null; } });
   return copia;
 }
 function resumo(s) {
-  return [s.comprovantes, s.pagamentos, s.mensagens, s.recibos, s.documentos, s.boletosPendentes, s.historico]
+  return [s.comprovantes, s.pagamentos, s.mensagens, s.recibos, s.documentos, s.boletosPendentes, s.historico, s.locacoes, s.pessoas]
     .map(a => (a || []).length).join("-");
 }
 function selo() {
   if (MODO === "leitura") return "sem conexão";
+  if (gravando) return "salvando";
   if (!ultimaSync) return "conectando";
   const seg = Math.round((Date.now() - ultimaSync) / 1000);
   return seg < 45 ? "ao vivo" : seg < 3600 ? "há " + Math.round(seg / 60) + " min" : "sem contato";
 }
 function pintaSelo() {
   const el = document.getElementById("selo-sync");
-  if (el) el.lastChild.textContent = selo() + (EU && EU.nome ? " · " + EU.nome.split(" ")[0] : "");
+  if (!el) return;
+  el.lastChild.textContent = selo() + (EU && EU.nome ? " · " + EU.nome.split(" ")[0] : "");
+  el.className = "tag " + (MODO === "leitura" ? "atrasado" : gravando ? "analise" : "pago");
 }
 async function apiGet(action) {
-  const r = await fetch(API_URL + "?action=" + encodeURIComponent(action) + "&_=" + Date.now(), { method:"GET", cache:"no-store", redirect:"follow" });
+  const r = await fetch(API_URL + "?action=" + encodeURIComponent(action) + "&_=" + Date.now(), { method: "GET", cache: "no-store", redirect: "follow" });
   const txt = await r.text();
-  let j; try { j = JSON.parse(txt); } catch (_) { throw new Error("Resposta inválida do banco."); }
-  if (!j.ok) throw new Error(j.error || "Erro no banco.");
+  let j; try { j = JSON.parse(txt); } catch (_) { throw new Error("A planilha respondeu algo que não entendi. Confira se o link do Apps Script está publicado para qualquer pessoa."); }
+  if (!j.ok) throw new Error(j.error || "Erro na planilha.");
   return j;
 }
 async function apiPost(body) {
   const r = await fetch(API_URL, {
-    method:"POST", redirect:"follow", cache:"no-store",
-    headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify(body)
+    method: "POST", redirect: "follow", cache: "no-store",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(body)
   });
   const txt = await r.text();
-  let j; try { j = JSON.parse(txt); } catch (_) { throw new Error("Resposta inválida do banco."); }
-  if (!j.ok) throw new Error(j.error || "Erro no banco.");
+  let j; try { j = JSON.parse(txt); } catch (_) { throw new Error("A planilha respondeu algo que não entendi."); }
+  if (!j.ok) throw new Error(j.error || "Erro na planilha.");
   return j;
 }
-function aplicaEstadoRemoto(d) {
-  if (!d || Number(d.v) !== VERSAO) throw new Error("Versão do banco incompatível com este app.");
-  const antes = S ? resumo(S) : null;
-  const ui = S && S.ui ? S.ui : null;
-  // O Sheets pode devolver configurações parciais. Completa com os padrões do app
-  // sem sobrescrever o que já estiver salvo no banco.
+function completaEstado(d) {
   const base = seed();
   const cfgRemoto = d.config || {};
-  const tiposRemotos = cfgRemoto.tipos || {};
   const tipos = {};
-  Object.keys(base.config.tipos || {}).forEach(k => {
-    tipos[k] = Object.assign({}, base.config.tipos[k], tiposRemotos[k] || {});
-  });
-  Object.keys(tiposRemotos).forEach(k => {
-    if (!tipos[k]) tipos[k] = Object.assign({}, tiposRemotos[k]);
-  });
-  S = Object.assign({}, base, d);
-  S.imobiliaria = Object.assign({}, base.imobiliaria, d.imobiliaria || {});
-  S.config = Object.assign({}, base.config, cfgRemoto, { tipos });
-  ["usuarios","pessoas","imoveis","locacoes","cobrancas","pagamentos","comprovantes","documentos","drive","historico","boletosPendentes","mensagens","atendimentos","recibos"].forEach(k => {
-    if (!Array.isArray(S[k])) S[k] = [];
-  });
-  S.criterios = S.criterios || {};
-  S.ui = ui || { perfil:null, pessoaId:null, view:"login", locacaoId:null, cobrancaId:null, tab:"resumo", filtro:{}, loginModo:"perfis" };
-  if (S.ui.pessoaId && !(S.pessoas || []).some(p => p.id === S.ui.pessoaId)) { S.ui.perfil = null; S.ui.pessoaId = null; S.ui.view = "login"; }
+  Object.keys(base.config.tipos || {}).forEach(k => { tipos[k] = Object.assign({}, base.config.tipos[k], (cfgRemoto.tipos || {})[k] || {}); });
+  Object.keys(cfgRemoto.tipos || {}).forEach(k => { if (!tipos[k]) tipos[k] = Object.assign({}, cfgRemoto.tipos[k]); });
+  const novo = Object.assign({}, base, d);
+  novo.imobiliaria = Object.assign({}, base.imobiliaria, d.imobiliaria || {});
+  novo.config = Object.assign({}, base.config, cfgRemoto, { tipos });
+  ["usuarios", "pessoas", "imoveis", "locacoes", "cobrancas", "pagamentos", "comprovantes", "documentos", "drive",
+    "historico", "boletosPendentes", "mensagens", "atendimentos", "recibos"].forEach(k => { if (!Array.isArray(novo[k])) novo[k] = []; });
+  novo.criterios = novo.criterios || {};
+  (novo.comprovantes || []).forEach(c => { if (!c.dataUrl) { const a = arquivoLocal(c.id); if (a) c.dataUrl = a; } });
+  return novo;
+}
+function aplicaEstadoRemoto(d) {
+  if (!d || Number(d.v) !== VERSAO) throw new Error("A planilha está na versão " + (d && d.v) + " e o app na " + VERSAO + ". Atualize o Apps Script ou recarregue a base.");
+  const antes = S ? resumo(S) : null;
+  const ui = S && S.ui ? S.ui : null;
+  S = completaEstado(d);
+  S.ui = ui || { perfil: null, pessoaId: null, view: "login", locacaoId: null, cobrancaId: null, tab: "resumo", filtro: {} };
+  if (S.ui.pessoaId && !S.pessoas.some(p => p.id === S.ui.pessoaId)) { S.ui.perfil = null; S.ui.pessoaId = null; S.ui.view = "login"; }
   ultimaSync = Date.now();
   render();
+  if (antes && antes !== resumo(S)) { marca("tempoReal"); marca("planilhaBase"); toast("Atualizado com o que o time registrou."); }
 }
-async function gravaCompartilhado(forcar) {
+async function gravaCompartilhado() {
+  if (!S) return;
   if (gravando) { gravarDeNovo = true; return; }
-  gravando = true;
+  gravando = true; pintaSelo();
   const marca_ = rev;
   try {
-    await apiPost({ action:"save", state:estadoParaCompartilhar() });
-    revGravada = marca_; ultimaSync = Date.now(); MODO = "sheets";
+    await apiPost({ action: "save", state: estadoParaCompartilhar() });
+    revGravada = marca_; ultimaSync = Date.now(); MODO = "sheets"; ultimoErro = "";
   } catch (e) {
+    const antes = MODO;
     MODO = "leitura";
+    if (String(e.message) !== ultimoErro) { ultimoErro = String(e.message); toast("Não consegui gravar na planilha: " + e.message); }
+    if (antes !== "leitura") { gravando = false; render(); }
   }
   gravando = false; pintaSelo();
   if (gravarDeNovo) { gravarDeNovo = false; gravaCompartilhado(); }
@@ -712,11 +712,10 @@ async function gravaCompartilhado(forcar) {
 function agendaGravacao() {
   rev++;
   clearTimeout(timerGravar);
-  timerGravar = setTimeout(gravaCompartilhado, 350);
+  timerGravar = setTimeout(gravaCompartilhado, 400);
 }
 const temMudancaLocal = () => rev !== revGravada || gravando;
 async function iniciarSync() {
-  MODO = "sheets"; render();
   try {
     const resp = await apiGet("load");
     const remoto = resp.state || {};
@@ -724,50 +723,60 @@ async function iniciarSync() {
     if (vazio) {
       const ui = S && S.ui ? S.ui : null;
       S = seed(); if (ui) S.ui = ui;
-      await apiPost({ action:"save", state:estadoParaCompartilhar() });
-      ultimaSync = Date.now(); revGravada = rev;
+      await apiPost({ action: "save", state: estadoParaCompartilhar() });
+      ultimaSync = Date.now(); revGravada = rev; MODO = "sheets";
       render();
+      toast("Planilha vazia: gravei os dados de exemplo para começar.", true);
     } else {
       aplicaEstadoRemoto(remoto);
+      MODO = "sheets";
     }
-    MODO = "sheets";
   } catch (e) {
     MODO = "leitura";
+    ultimoErro = String(e.message);
     render();
+    toast("Sem conexão com a planilha. Você está vendo dados de exemplo e nada será gravado.");
   }
+  pintaSelo();
   clearInterval(timerSelo);
   timerSelo = setInterval(pintaSelo, 10000);
-  setInterval(() => { if (!temMudancaLocal() && document.visibilityState === "visible") puxarAgora(); }, 20000);
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    if (temMudancaLocal()) gravaCompartilhado(); else puxarAgora();
+  }, 20000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") puxarAgora(); });
   window.addEventListener("focus", puxarAgora);
 }
 async function puxarAgora() {
   if (temMudancaLocal()) return;
-  try { const r = await apiGet("load"); aplicaEstadoRemoto(r.state); MODO="sheets"; }
-  catch (_) { MODO="leitura"; pintaSelo(); }
+  try {
+    const r = await apiGet("load");
+    const antes = MODO;
+    MODO = "sheets"; ultimoErro = "";
+    aplicaEstadoRemoto(r.state);
+    if (antes === "leitura") toast("Conexão com a planilha restabelecida.", true);
+  } catch (e) {
+    const antes = MODO;
+    MODO = "leitura"; ultimoErro = String(e.message);
+    if (antes !== "leitura") render(); else pintaSelo();
+  }
 }
-function load() {
-  // O banco operacional é o Google Sheets. O navegador guarda apenas a interface local.
-  return seed();
-}
+function load() { return seed(); }
 function save() {
-  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
+  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui: S.ui })); } catch (e) { }
   agendaGravacao();
 }
 async function saveAgora() {
-  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
+  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui: S.ui })); } catch (e) { }
   rev++;
   clearTimeout(timerGravar);
-  await gravaCompartilhado(true);
-  if (MODO !== "sheets") throw new Error("O Google Sheets não confirmou a gravação.");
-  return true;
+  await gravaCompartilhado();
 }
 function reset() {
+  if (!confirm("Isso apaga tudo que está na planilha e recoloca os dados de exemplo. Continuar?")) return;
   const ui = S.ui;
   S = seed(); S.ui = ui;
-  try { localStorage.removeItem(KEY); } catch (_) {}
-  save();
-  go("login");
+  saveAgora().then(() => { go("login"); toast("Base recarregada com os exemplos.", true); });
 }
 
 /* ============ consultas ============ */
@@ -990,7 +999,7 @@ function topbar() {
   return `<header class="topbar">${sim}<div class="topbar-in">
     ${logoInline()}
     <div class="grow"></div>
-    ${MODO === "local" ? "" : `<button id="selo-sync" class="tag ${MODO === "leitura" ? "pendente" : "pago"}" style="border-style:solid;cursor:pointer" data-act="sincronizar" title="Base compartilhada com o time. Toque para buscar agora."><span class="dot"></span>${esc(selo())}${EU && EU.nome ? " · " + esc(EU.nome.split(" ")[0]) : ""}</button>`}
+    ${`<button id="selo-sync" class="tag ${MODO === "leitura" ? "pendente" : "pago"}" style="border-style:solid;cursor:pointer" data-act="sincronizar" title="Base compartilhada com o time. Toque para buscar agora."><span class="dot"></span>${esc(selo())}${EU && EU.nome ? " · " + esc(EU.nome.split(" ")[0]) : ""}</button>`}
     ${perfil ? `<div class="whoami"><span class="truncate" style="max-width:36vw"><span class="muted">${papel} · </span>${esc(nome.split(" ")[0])}</span>
       <span class="avatar">${iniciais(nome)}</span></div>
       <button class="btn sm" data-act="sair">Sair</button>` : ""}
@@ -1082,18 +1091,18 @@ function viewAdmin() {
     ${pode("config") ? item("adm.config", "Configurações", 0, "engrenagem") : ""}
     ${pode("piloto") ? item("adm.aceite", "Critérios do piloto", 0, "lista") : ""}
   </nav>`;
-  let main = "";
-  if (v === "adm.dashboard") main = admDashboard();
-  else if (v === "adm.cobrancas") main = admCobrancas();
-  else if (v === "adm.locacoes") main = admLocacoes();
-  else if (v === "adm.locacao") main = admLocacao();
-  else if (v === "adm.pendencias") main = pode("financeiro") ? admPendencias() : semPermissao();
-  else if (v === "adm.drive") main = admDrive();
-  else if (v === "adm.relatorios") main = pode("relatorios") ? admRelatorios() : semPermissao();
-  else if (v === "adm.mensagens") main = pode("mensagens") ? admMensagens() : semPermissao();
-  else if (v === "adm.usuarios") main = pode("usuarios") ? admUsuarios() : semPermissao();
-  else if (v === "adm.config") main = pode("config") ? admConfig() : semPermissao();
-  else if (v === "adm.aceite") main = pode("piloto") ? admAceite() : semPermissao();
+  let main = avisoConexao();
+  if (v === "adm.dashboard") main += admDashboard();
+  else if (v === "adm.cobrancas") main += admCobrancas();
+  else if (v === "adm.locacoes") main += admLocacoes();
+  else if (v === "adm.locacao") main += admLocacao();
+  else if (v === "adm.pendencias") main += pode("financeiro") ? admPendencias() : semPermissao();
+  else if (v === "adm.drive") main += admDrive();
+  else if (v === "adm.relatorios") main += pode("relatorios") ? admRelatorios() : semPermissao();
+  else if (v === "adm.mensagens") main += pode("mensagens") ? admMensagens() : semPermissao();
+  else if (v === "adm.usuarios") main += pode("usuarios") ? admUsuarios() : semPermissao();
+  else if (v === "adm.config") main += pode("config") ? admConfig() : semPermissao();
+  else if (v === "adm.aceite") main += pode("piloto") ? admAceite() : semPermissao();
   const nValidar = pendentesComprovante + boletosPend + valoresPend;
   const nMsg = S.mensagens.filter(aguardaAltha).length;
   const tb = (view, lab, ico, n) => `<button class="${v === view ? "on" : ""}" data-act="ir" data-view="${view}">
@@ -1492,7 +1501,7 @@ function admPendencias() {
 
 function admDrive() {
   const cfg = S.config;
-  const arquivos = [...(S.drive || [])].sort((a, b) => String(b.em || "").localeCompare(String(a.em || "")));
+  const arquivos = [...S.drive].sort((a, b) => b.em.localeCompare(a.em));
   return `<div class="spread wrap"><h1>Google Drive</h1>
     <button class="btn" data-act="ir" data-view="adm.config">Mudar estrutura e nomes</button></div>
   <div class="card pad stack" style="gap:10px">
@@ -1534,6 +1543,13 @@ function admDrive() {
       </div>
     </div>`;
   }).join("")}</div>`;
+}
+function avisoConexao() {
+  if (MODO !== "leitura") return "";
+  return `<div class="card pad stack" style="gap:8px;border-left:3px solid var(--bad)">
+    <div style="font-weight:500">Sem conexão com a planilha</div>
+    <div class="small muted">O que você fizer agora não será gravado. ${esc(ultimoErro || "")}</div>
+    <button class="btn" style="align-self:flex-start" data-act="sincronizar">Tentar de novo</button></div>`;
 }
 function semPermissao() {
   return `<div class="card pad stack"><h2>Área restrita</h2>
@@ -1684,6 +1700,19 @@ function admConfig() {
   const linkOu = (url, rot) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="small">${rot}</a>` : `<span class="tiny muted">não informado</span>`;
   return `<h1>Configurações</h1>
   <div class="card pad stack">
+    <h2>Base de dados</h2>
+    <p class="small muted" style="margin:0">Tudo que o portal registra fica na planilha <strong>basededadosdoapp</strong>, no Google Drive da Altha, pelo Apps Script.</p>
+    <div class="grid2 small">
+      <div><span class="muted">Situação</span><div>${MODO === "leitura" ? "sem conexão" : "conectado · " + esc(selo())}</div></div>
+      <div><span class="muted">Última sincronização</span><div>${ultimaSync ? dHora(new Date(ultimaSync).toISOString()) : "—"}</div></div>
+    </div>
+    <div class="row wrap" style="gap:8px">
+      <button class="btn sm" data-act="sincronizar">Sincronizar agora</button>
+      <button class="btn sm" data-act="reiniciarBase">Recarregar dados de exemplo</button>
+    </div>
+    ${ultimoErro ? `<div class="small" style="color:var(--bad)">${esc(ultimoErro)}</div>` : ""}
+  </div>
+  <div class="card pad stack">
     <h2>Como a Altha recebe</h2>
     <p class="small muted" style="margin:0">Vale para a taxa administrativa e demais valores da imobiliária, em todas as locações.</p>
     ${camposRecebimento("ri", S.imobiliaria.recebimento || { forma: "PIX", chaveTipo: "CPF ou CNPJ", chave: S.imobiliaria.pix })}
@@ -1712,7 +1741,7 @@ function admConfig() {
             <div class="field" style="margin-bottom:8px"><label for="cn_${k}">Nome do arquivo</label>
               <input id="cn_${k}" value="${esc(t.nome)}" data-act="cfgTipo" data-k="${k}" data-campo="nome"></div>
           </div>
-          <div class="tiny muted" style="word-break:break-word">${S.locacoes.length ? esc(drivePath(S, S.locacoes[0].id, S.competencia, k, rec)) + " / " + esc(trocaTokens(t.nome, valoresDe(S, S.locacoes[0].id, S.competencia, rec, { numero: "0001/2026", tipo: "vistoria" }))) + ".pdf" : "Cadastre uma locação para visualizar um exemplo do caminho."}</div>
+          <div class="tiny muted" style="word-break:break-word">${esc(drivePath(S, S.locacoes[0].id, S.competencia, k, rec))} / ${esc(trocaTokens(t.nome, valoresDe(S, S.locacoes[0].id, S.competencia, rec, { numero: "0001/2026", tipo: "vistoria" })))}.pdf</div>
         </div>`;
       }).join("")}
     </div>
@@ -1742,6 +1771,7 @@ const CRITERIOS = [
   { k: "aviso", t: "A equipe avisa o inquilino do fechamento e cobra atraso pelo WhatsApp, com a mensagem pronta e registro no histórico.", d: "Abra uma locação e use Avisar no WhatsApp.", novo: true },
   { k: "cpf", t: "Cada pessoa tem um CPF, obrigatório e único, que impede cadastro duplicado.", d: "Tente cadastrar alguém com CPF repetido.", novo: true },
   { k: "niveis", t: "Dentro da equipe existem níveis: só a administração principal vê os critérios do piloto e abre o portal de um cliente pelo Ver como.", d: "Crie um usuário da Altha e compare o menu dele com o seu.", novo: true },
+  { k: "planilhaBase", t: "Tudo que o portal registra vai para a planilha do Google e volta para os outros aparelhos: mesma base para o time inteiro.", d: "Registre algo em um aparelho e abra em outro.", novo: true },
   { k: "recusa", t: "Comprovante e conta podem ser recusados com motivo obrigatório, e a explicação chega como mensagem ao inquilino ou ao proprietário.", d: "Abra Para validar e recuse um comprovante.", novo: true },
   { k: "ocr", t: "Antes da conferência manual, o sistema faz a leitura automática do comprovante e aponta o que não bate.", d: "Abra um comprovante em Para validar.", novo: true },
   { k: "planilhaAltha", t: "As planilhas oficiais da Altha (.xlsx) são baixadas prontas pelo portal, preenchidas no Excel e importadas de volta, com a coluna Ação mandando o que entra.", d: "Em Usuários e em Locações, baixe o modelo, preencha e importe.", novo: true },
@@ -1824,7 +1854,7 @@ function avisoRecados() {
 
 function viewInquilino() {
   const v = S.ui.view;
-  let body = v === "inq.cobranca" ? inqCobranca() : v === "inq.docs" ? inqDocumentos() : v === "inq.msgs" ? inqMensagens() : inqHome();
+  let body = avisoConexao() + (v === "inq.cobranca" ? inqCobranca() : v === "inq.docs" ? inqDocumentos() : v === "inq.msgs" ? inqMensagens() : inqHome());
   return topbar() + `<div class="client-shell stack">${body}</div>` + tabbar([
     { v: "inq.home", l: "Início", i: "home" }, { v: "inq.cobranca", l: "Cobrança", i: "pix" },
     { v: "inq.msgs", l: "Mensagens", i: "msg", n: naoLidas() }, { v: "inq.docs", l: "Documentos", i: "doc" }
@@ -2021,7 +2051,7 @@ function inqMensagens() {
 /* ============ portal do proprietário ============ */
 function viewProprietario() {
   const v = S.ui.view;
-  let body = v === "prop.demonstrativo" ? propDemonstrativo() : v === "prop.docs" ? propDocumentos() : v === "prop.msgs" ? inqMensagens() : propHome();
+  let body = avisoConexao() + (v === "prop.demonstrativo" ? propDemonstrativo() : v === "prop.docs" ? propDocumentos() : v === "prop.msgs" ? inqMensagens() : propHome());
   return topbar() + `<div class="client-shell stack">${body}</div>` + tabbar([
     { v: "prop.home", l: "Imóveis", i: "imo" }, { v: "prop.demonstrativo", l: "Demonstrativo", i: "pix" },
     { v: "prop.msgs", l: "Mensagens", i: "msg", n: naoLidas() }, { v: "prop.docs", l: "Documentos", i: "doc" }
@@ -2248,15 +2278,15 @@ A.criarAcessoOK = () => {
   if (senha.length < 6) { toast("A senha precisa de ao menos 6 caracteres."); return; }
   if (contas().some(c => (c.login || "").toLowerCase() === email)) { toast("Esse e-mail já tem acesso. Use Entrar."); return; }
   const primeiro = nome.split(" ")[0];
-  const eu = { demo:true, id: uid("p"), nome, cpf: cpfN, email, tel: "—", canal: "Portal", senha, senhaProvisoria: false, papelPrevisto: tipo, origemCadastro: "cadastro próprio", criadoEm: agora() };
+  const eu = { id: uid("p"), nome, cpf: cpfN, email, tel: "—", canal: "Portal", senha, senhaProvisoria: false, papelPrevisto: tipo, origemCadastro: "cadastro próprio", criadoEm: agora() };
   S.pessoas.push(eu);
-  const par = { demo:true, id: uid("p"), nome: tipo === "inquilino" ? "Proprietário do teste de " + primeiro : "Inquilino do teste de " + primeiro,
+  const par = { id: uid("p"), nome: tipo === "inquilino" ? "Proprietário do teste de " + primeiro : "Inquilino do teste de " + primeiro,
     cpf: "—", email: "—", tel: "—", canal: "WhatsApp", ativo: false };
   S.pessoas.push(par);
-  const im = { demo:true, id: uid("i"), apelido: "Ap. 20 — Ed. Aurora (teste de " + primeiro + ")", endereco: "Av. das Hortênsias, 300 — Centro, Gramado/RS", tipo: "Apartamento" };
+  const im = { id: uid("i"), apelido: "Ap. 20 — Ed. Aurora (teste de " + primeiro + ")", endereco: "Av. das Hortênsias, 300 — Centro, Gramado/RS", tipo: "Apartamento" };
   S.imoveis.push(im);
   const l = {
-    demo:true, id: uid("l"), driveUrl: "", contratoUrl: "", imovelId: im.id,
+    id: uid("l"), driveUrl: "", contratoUrl: "", imovelId: im.id,
     inquilinoId: tipo === "inquilino" ? eu.id : par.id, proprietarioId: tipo === "inquilino" ? par.id : eu.id,
     inicio: hojeISO(), fim: "", diaVenc: Math.min(28, HOJE.getDate() + 5), multa: "2% + 1% ao mês", pixImob: S.imobiliaria.pix, pixProp: "teste@althaimoveisrs.com.br",
     regras: [
@@ -2287,51 +2317,67 @@ A.criarAcessoOK = () => {
   go(tipo === "inquilino" ? "inq.home" : "prop.home");
   toast("Acesso criado. Bem-vindo, " + primeiro + ".", true);
 };
-A.irForm = () => { S.ui.loginModo = "form"; S.ui.loginErro = null; save(); render(); };
-A.irPerfis = () => { guardaLogin(); S.ui.loginModo = "perfis"; S.ui.loginErro = null; save(); render(); };
-A.entrar = el => { if (el.dataset.perfil === "imobiliaria") { toast("O painel é restrito à equipe da Altha."); return; }
-  const perfil = el.dataset.perfil;
-  S.ui.perfil = perfil; S.ui.pessoaId = el.dataset.pessoa || null;
-  if (perfil !== "imobiliaria") marca("permissao");
-  go(perfil === "imobiliaria" ? "adm.dashboard" : perfil === "inquilino" ? "inq.home" : "prop.home");
-};
-A.preencher = el => {
-  S.ui.loginUser = el.dataset.login; S.ui.loginPass = SENHA; S.ui.loginErro = null;
-  save(); render();
-  const b = document.querySelector('[data-act="login"]'); if (b) b.focus();
-  toast("Dados preenchidos. Toque em Entrar.");
+A.login = async () => {
+  guardaLogin();
+  const u = (S.ui.loginUser || "").trim(), senha = S.ui.loginPass || "";
+  if (!u) { S.ui.loginErro = "Informe seu CPF ou e-mail."; render(); return; }
+  if (!senha) { S.ui.loginErro = "Informe sua senha."; render(); return; }
+  S.ui.loginErro = "Verificando..."; render();
+  try {
+    const r = await apiPost({ action: "login", login: u, password: senha });
+    const conta = r.account;
+    S.ui.loginErro = null; S.ui.loginPass = ""; S.ui.verSenha = false;
+    S.ui.perfil = conta.perfil; S.ui.pessoaId = conta.pessoaId || null; S.ui.usuarioId = conta.pessoaId ? null : conta.id;
+    if (!conta.pessoaId) {
+      const uu = (S.usuarios || []).find(x => x.id === conta.id);
+      if (uu) { uu.perms = conta.perms || uu.perms; uu.senhaProvisoria = !!conta.senhaProvisoria; }
+    } else {
+      const pp = pessoa(conta.pessoaId);
+      if (pp) { pp.usuarioId = conta.id; pp.senhaProvisoria = !!conta.senhaProvisoria; }
+    }
+    EU = { nome: conta.nome };
+    S.ui.trocarSenha = !!conta.senhaProvisoria;
+    S.ui.trocaErro = null;
+    marca("login"); if (conta.perfil !== "imobiliaria") marca("permissao");
+    try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui: S.ui })); } catch (e) { }
+    go(conta.perfil === "imobiliaria" ? "adm.dashboard" : conta.perfil === "inquilino" ? "inq.home" : "prop.home");
+    if (!S.ui.trocarSenha) toast("Bem-vindo, " + conta.nome.split(" ")[0] + ".", true);
+  } catch (e) {
+    S.ui.loginErro = e.message || "Não foi possível entrar.";
+    render();
+  }
 };
 A.verSenha = () => { guardaLogin(); S.ui.verSenha = !S.ui.verSenha; render(); };
 function guardaLogin() {
   const u = document.getElementById("lg_user"), p = document.getElementById("lg_pass");
   if (u) S.ui.loginUser = u.value; if (p) S.ui.loginPass = p.value;
 }
-A.login = async () => {
+A.login = () => {
   guardaLogin();
   const u = (S.ui.loginUser || "").trim(), senha = S.ui.loginPass || "";
   if (!u) { S.ui.loginErro = "Informe seu CPF ou e-mail."; render(); return; }
-  if (!senha) { S.ui.loginErro = "Informe sua senha."; render(); return; }
-  S.ui.loginErro = null; render();
-  try {
-    const r = await apiPost({ action:"login", login:u, password:senha });
-    const conta = r.account;
-    S.ui.loginPass = ""; S.ui.verSenha = false;
-    S.ui.perfil = conta.perfil; S.ui.pessoaId = conta.pessoaId || null; S.ui.usuarioId = conta.pessoaId ? null : conta.id;
-    if (!conta.pessoaId) {
-      const uu = (S.usuarios || []).find(x => x.id === conta.id);
-      if (uu) { uu.perms = conta.perms || uu.perms; uu.senhaProvisoria = !!conta.senhaProvisoria; }
-    } else {
-      const pp = pessoa(conta.pessoaId); pp.usuarioId = conta.id; pp.senhaProvisoria = !!conta.senhaProvisoria;
-    }
-    S.ui.trocarSenha = !!conta.senhaProvisoria;
-    S.ui.trocaErro = null;
-    marca("login"); if (conta.perfil !== "imobiliaria") marca("permissao");
-    try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
-    go(conta.perfil === "imobiliaria" ? "adm.dashboard" : conta.perfil === "inquilino" ? "inq.home" : "prop.home");
-    if (!S.ui.trocarSenha) toast("Bem-vindo, " + conta.nome.split(" ")[0] + ".", true);
-  } catch (e) {
-    S.ui.loginErro = e.message || "Não foi possível entrar."; render();
+  const norm = s => String(s || "").trim().toLowerCase().replace(/\s+/g, "");
+  const dig = soDigitos(u);
+  const bate = c => (c.login && norm(c.login) === norm(u)) || cpfIgual(c.cpf, u);
+  const conta = contas().find(bate);
+  if (!conta) {
+    const desligado = S.pessoas.concat(S.usuarios || []).find(x => (x.email && norm(x.email) === norm(u)) || (dig.length === 11 && soDigitos(x.cpf || "") === dig));
+    S.ui.loginErro = desligado
+      ? "O acesso de " + desligado.nome.split(" ")[0] + " está desligado. Fale com a Altha."
+      : "Não encontramos esse CPF ou e-mail. Confira com a Altha qual é o login do seu cadastro.";
+    render(); return;
   }
+  if (!senha) { S.ui.loginErro = "Informe sua senha."; render(); return; }
+  if (senha !== (conta.senha || SENHA)) { S.ui.loginErro = "Senha incorreta. Se a Altha acabou de criar o seu acesso, use a senha provisória que ela enviou."; render(); return; }
+  S.ui.loginErro = null; S.ui.loginPass = ""; S.ui.verSenha = false;
+  S.ui.perfil = conta.perfil; S.ui.pessoaId = conta.pessoaId; S.ui.usuarioId = conta.pessoaId ? null : conta.id;
+  const alvoLogin = conta.pessoaId ? pessoa(conta.pessoaId) : S.usuarios.find(u => u.id === conta.id);
+  S.ui.trocarSenha = !!(alvoLogin && alvoLogin.senhaProvisoria);
+  S.ui.trocaErro = null;
+  marca("login");
+  if (conta.perfil !== "imobiliaria") marca("permissao");
+  go(conta.perfil === "imobiliaria" ? "adm.dashboard" : conta.perfil === "inquilino" ? "inq.home" : "prop.home");
+  if (!S.ui.trocarSenha) toast("Bem-vindo, " + conta.nome.split(" ")[0] + ".", true);
 };
 A.trocarSenhaOK = async () => {
   const s1 = $("#ts1").value, s2 = $("#ts2").value;
@@ -2339,8 +2385,9 @@ A.trocarSenhaOK = async () => {
   if (s1.length < 6) { S.ui.trocaErro = "A senha precisa de ao menos 6 caracteres."; render(); return; }
   if (s1 !== s2) { S.ui.trocaErro = "As duas senhas não são iguais."; render(); return; }
   const accountId = S.ui.pessoaId ? (alvo.usuarioId || ("u_" + alvo.id)) : alvo.id;
+  S.ui.trocaErro = "Salvando..."; render();
   try {
-    await apiPost({ action:"setpassword", accountId, password:s1, provisional:false });
+    await apiPost({ action: "setpassword", accountId: accountId, password: s1, provisional: false });
     delete alvo.senha; alvo.senhaProvisoria = false; alvo.senhaTrocadaEm = agora();
     S.ui.trocarSenha = null; S.ui.trocaErro = null;
     marca("primeiroAcesso"); save(); render();
@@ -2379,18 +2426,12 @@ A.ajudaAcesso = () => {
   $("#m_user").addEventListener("input", refaz);
   $("#m_msg").addEventListener("input", sincronizaLinks);
 };
-A.sincronizar = () => { puxarAgora(); toast("Buscando as últimas mudanças do time..."); };
-A.sair = () => { S.ui.fluxo = null; S.ui.simulando = null; S.ui.perfil = null; S.ui.pessoaId = null; S.ui.loginUser = ""; S.ui.loginPass = ""; S.ui.loginErro = null; S.ui.loginModo = "perfis"; go("login"); };
-A.ir = el => {
-  fecharModal();
-  try { go(el.dataset.view); }
-  catch (e) {
-    console.error(e);
-    toast("Não consegui abrir esta área: " + (e && e.message ? e.message : "erro de configuração"));
-    S.ui.view = "adm.dashboard";
-    render();
-  }
+A.sincronizar = async () => {
+  if (temMudancaLocal()) { toast("Gravando o que ficou pendente..."); await gravaCompartilhado(); }
+  if (!temMudancaLocal()) { toast("Buscando as últimas mudanças do time..."); await puxarAgora(); }
 };
+A.sair = () => { S.ui.fluxo = null; S.ui.simulando = null; S.ui.perfil = null; S.ui.pessoaId = null; S.ui.loginUser = ""; S.ui.loginPass = ""; S.ui.loginErro = null; S.ui.loginModo = "perfis"; go("login"); };
+A.ir = el => { fecharModal(); go(el.dataset.view); };
 A.maisMenu = () => {
   const item = (view, lab, sub, n) => `<button class="sheet-item" data-act="ir" data-view="${view}">
     <span><span style="display:block;font-weight:500">${lab}</span><span class="small muted">${sub}</span></span>
@@ -2594,10 +2635,10 @@ A.redefinirSenhaOK = async el => {
   const nova = $("#m_nova").value.trim();
   if (nova.length < 6) { toast("A senha provisória precisa de ao menos 6 caracteres."); return; }
   if ($("#m_fone2") && $("#m_fone2").value.trim()) alvo.tel = $("#m_fone2").value.trim();
-  const accountId = tipo === "equipe" ? alvo.id : (alvo.usuarioId || ("u_" + alvo.id));
-  try { await apiPost({ action:"setpassword", accountId, password:nova, provisional:true }); }
-  catch (e) { toast("Não consegui redefinir a senha: " + (e.message || e)); return; }
-  alvo.senha = nova; alvo.senhaProvisoria = true; alvo.senhaTrocadaEm = null;
+  const accountId = el.dataset.tipo === "equipe" ? alvo.id : (alvo.usuarioId || ("u_" + alvo.id));
+  try { await apiPost({ action: "setpassword", accountId: accountId, password: nova, provisional: true }); }
+  catch (e) { toast("Não consegui gravar a nova senha na planilha: " + e.message); return; }
+  alvo.senhaProvisoria = true; alvo.senhaTrocadaEm = null;
   alvo.senhaRedefinidaEm = agora(); alvo.senhaRedefinidaPor = quemSou();
   const loc = S.locacoes.find(l => l.inquilinoId === alvo.id || l.proprietarioId === alvo.id);
   if (loc) log(loc.id, null, `Senha de ${alvo.nome} redefinida. A pessoa cria a própria no primeiro acesso.`, origemAtual());
@@ -2897,6 +2938,7 @@ A.responderMensagem = el => {
   log(m.locacaoId, null, txt ? `Resposta enviada na mensagem sobre ${m.assunto}.` : `Mensagem sobre ${m.assunto} marcada como ${m.status}.`, origemAtual());
   fecharModal(); save(); render(); toast(txt ? "Resposta enviada." : "Situação atualizada.", true);
 };
+A.reiniciarBase = () => { if (!pode("config")) return negado("config"); reset(); };
 A.salvarRecebImob = () => {
   S.imobiliaria.recebimento = leRecebimento("ri");
   if (S.imobiliaria.recebimento.forma === "PIX") S.imobiliaria.pix = S.imobiliaria.recebimento.chave;
@@ -3747,46 +3789,24 @@ async function lerPlanilha(file, alias) {
 }
 
 /* -- planilha de usuários -- */
-const COLUNAS = ["acao", "tipo", "nome", "cpf", "email", "telefone", "canal", "senha", "cargo"];
+const COLUNAS = ["tipo", "nome", "cpf", "email", "telefone", "canal", "senha", "cargo", "imovel", "endereco", "proprietario_email", "aluguel", "dia_vencimento", "taxa_administrativa", "condominio_por_boleto"];
 const CABECALHOS = {
-  acao: "AÇÃO (Atualizar ou Ignorar)",
-  tipo: "IDENTIFICADOR* (inquilino, proprietario ou equipe)",
-  nome: "NOME COMPLETO*",
-  cpf: "CPF*",
-  email: "E-MAIL",
-  telefone: "WHATSAPP",
-  canal: "CANAL PREFERENCIAL",
-  senha: "SENHA INICIAL",
-  cargo: "FUNÇÃO/CARGO NA ALTHA (só para equipe)"
+  tipo: "TIPO* (inquilino, proprietario ou equipe)", nome: "NOME COMPLETO*", cpf: "CPF*",
+  email: "E-MAIL (usado para entrar)", telefone: "WHATSAPP", canal: "CANAL PREFERENCIAL",
+  senha: "SENHA INICIAL (em branco usa a padrão)", cargo: "CARGO NA ALTHA (só para equipe)",
+  imovel: "IMÓVEL (preencha para criar a locação)", endereco: "ENDEREÇO DO IMÓVEL",
+  proprietario_email: "E-MAIL DO PROPRIETÁRIO (liga o inquilino ao dono)", aluguel: "ALUGUEL (R$)",
+  dia_vencimento: "DIA DE VENCIMENTO (1 a 28)", taxa_administrativa: "TAXA ADMINISTRATIVA (R$)",
+  condominio_por_boleto: "CONDOMÍNIO POR BOLETO (sim ou não)"
 };
 const ALIAS = (() => {
   const m = {};
   COLUNAS.forEach(c => { m[c] = c; m[normCab(CABECALHOS[c])] = c; });
   Object.assign(m, {
-    acao: "acao",
-    ação: "acao",
-    identificador: "tipo",
-    tipo: "tipo",
-    papel: "tipo",
-    funcao: "tipo",
-    função: "tipo",
-    nome_completo: "nome",
-    nome: "nome",
-    cpf: "cpf",
-    e_mail: "email",
-    email: "email",
-    e_mail_de_acesso: "email",
-    whatsapp: "telefone",
-    telefone: "telefone",
-    canal_preferencial: "canal",
-    canal: "canal",
-    senha_inicial: "senha",
-    senha: "senha",
-    cargo_na_altha: "cargo",
-    funcao_cargo_na_altha: "cargo",
-    função_cargo_na_altha: "cargo",
-    cargo: "cargo",
-    status_do_cadastro: ""
+    identificador: "tipo", e_mail: "email", e_mail_de_acesso: "email", whatsapp: "telefone", nome_completo: "nome",
+    dia_de_vencimento: "dia_vencimento", email_do_proprietario: "proprietario_email", e_mail_do_proprietario: "proprietario_email",
+    endereco_do_imovel: "endereco", senha_inicial: "senha", cargo_na_altha: "cargo", funcao_cargo_na_altha: "cargo",
+    acao: "acao", status_do_cadastro: ""
   });
   return m;
 })();
@@ -3843,30 +3863,28 @@ async function salvaArquivo(nome, texto) {
 A.baixarModelo = () => baixarModeloXlsx(MODELO_USUARIOS, "Altha_Cadastro_de_Usuarios.xlsx");
 A.baixarModeloCSV = () => {
   const ex = [
-    { acao: "Atualizar", tipo: "Inquilino", nome: "Maria da Silva", cpf: "000.000.000-00", email: "maria@email.com", telefone: "(54) 90000-0000", canal: "WhatsApp", senha: "", cargo: "" },
-    { acao: "Atualizar", tipo: "Proprietário", nome: "João Souza", cpf: "111.111.111-11", email: "joao@email.com", telefone: "(54) 91111-1111", canal: "E-mail", senha: "", cargo: "" },
-    { acao: "Atualizar", tipo: "Equipe", nome: "Fulana da Altha", cpf: "222.222.222-22", email: "fulana@althaimoveisrs.com.br", telefone: "", canal: "", senha: "", cargo: "Financeiro" }
+    { tipo: "Inquilino", nome: "Maria da Silva", cpf: "000.000.000-00", email: "maria@email.com", telefone: "(54) 90000-0000", canal: "WhatsApp", senha: "", cargo: "", imovel: "Ap. 101 — Ed. Exemplo", endereco: "Rua Exemplo, 100 — Centro, Gramado/RS", proprietario_email: "joao@email.com", aluguel: "2500", dia_vencimento: "10", taxa_administrativa: "250", condominio_por_boleto: "sim" },
+    { tipo: "proprietario", nome: "João Souza", cpf: "111.111.111-11", email: "joao@email.com", telefone: "(54) 91111-1111", canal: "E-mail", senha: "", cargo: "", imovel: "", endereco: "", proprietario_email: "", aluguel: "", dia_vencimento: "", taxa_administrativa: "", condominio_por_boleto: "" },
+    { tipo: "equipe", nome: "Fulana da Altha", cpf: "222.222.222-22", email: "fulana@althaimoveisrs.com.br", telefone: "", canal: "", senha: "", cargo: "Financeiro", imovel: "", endereco: "", proprietario_email: "", aluguel: "", dia_vencimento: "", taxa_administrativa: "", condominio_por_boleto: "" }
   ];
   salvaArquivo("altha-modelo-usuarios.csv", montaCSV(ex));
 };
 A.exportarAtual = () => {
   const linhas = [];
-  (S.usuarios || []).forEach(u => linhas.push({
-    acao: "Atualizar", tipo: "equipe", nome: u.nome || "", cpf: u.cpf || "",
-    email: u.email || "", telefone: u.tel || "", canal: u.canal || "",
-    senha: "", cargo: u.cargo || ""
-  }));
-  (S.pessoas || []).filter(p => p.ativo !== false).forEach(p => {
-    let tipo = p.papelPrevisto || "";
-    if (!tipo) {
-      const ehInq = S.locacoes.some(l => l.inquilinoId === p.id);
-      const ehProp = S.locacoes.some(l => l.proprietarioId === p.id);
-      tipo = ehInq && ehProp ? "ambos" : ehInq ? "inquilino" : "proprietario";
-    }
+  S.usuarios.forEach(u => linhas.push({ tipo: "equipe", nome: u.nome, email: u.email, senha: u.senha, cargo: u.cargo || "" }));
+  S.pessoas.filter(p => p.ativo !== false).forEach(p => {
+    const lo = S.locacoes.find(l => l.inquilinoId === p.id);
+    const ehInq = !!lo || p.papelPrevisto === "inquilino";
+    const l = lo;
     linhas.push({
-      acao: "Atualizar", tipo, nome: p.nome || "", cpf: p.cpf === "—" ? "" : (p.cpf || ""),
-      email: p.email === "—" ? "" : (p.email || ""), telefone: p.tel === "—" ? "" : (p.tel || ""),
-      canal: p.canal || "", senha: "", cargo: ""
+      tipo: ehInq ? "inquilino" : "proprietario", nome: p.nome, cpf: p.cpf === "—" ? "" : p.cpf,
+      email: p.email === "—" ? "" : p.email, telefone: p.tel === "—" ? "" : p.tel, canal: p.canal, senha: p.senha || "",
+      imovel: l ? imovel(l.imovelId).apelido : "", endereco: l ? imovel(l.imovelId).endereco : "",
+      proprietario_email: l ? pessoa(l.proprietarioId).email : "",
+      aluguel: l ? (l.regras.find(r => r.tipo === "Aluguel") || {}).valor : "",
+      dia_vencimento: l ? l.diaVenc : "",
+      taxa_administrativa: l ? ((l.regras.find(r => r.tipo === "Taxa administrativa") || {}).valor || "") : "",
+      condominio_por_boleto: l ? (l.regras.some(r => r.boleto) ? "sim" : "não") : ""
     });
   });
   salvaArquivo("altha-usuarios-" + hojeISO() + ".csv", montaCSV(linhas));
@@ -3996,7 +4014,7 @@ function montaRegras(l, antes) {
   if (num(l.taxa_administrativa)) regras.push({ desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: num(l.taxa_administrativa), recebedor: "imobiliaria" });
   return regras;
 }
-A.importarLocOK = async () => {
+A.importarLocOK = () => {
   const novas = S.ui.impLoc || [];
   if (!novas.length) return;
   const num = v => Number(String(v || "").replace(/\./g, "").replace(",", ".")) || 0;
@@ -4039,16 +4057,11 @@ A.importarLocOK = async () => {
     n++;
   });
   S.ui.impLoc = null; marca("importacaoLoc");
-  fecharModal(); render();
+  fecharModal(); save(); render();
   const partes = [];
   if (n) partes.push(`${n} ${n === 1 ? "locação criada" : "locações criadas"} com a cobrança de ${compLabel(S.competencia)}`);
   if (atualizadas) partes.push(`${atualizadas} ${atualizadas === 1 ? "atualizada" : "atualizadas"}`);
-  try {
-    await saveAgora();
-    toast((partes.join(" · ") || "Nada a fazer.") + " · salvo no Google Sheets", true);
-  } catch (e) {
-    toast("A importação foi feita no app, mas não consegui gravar no Sheets: " + (e.message || e));
-  }
+  toast(partes.join(" · ") || "Nada a fazer.", true);
 };
 A.importar = () => {
   if (!pode("usuarios")) return negado("usuarios");
@@ -4062,10 +4075,10 @@ A.importar = () => {
     <div class="field"><label for="m_csv">Arquivo preenchido</label><input id="m_csv" type="file" accept=".xlsx,.csv,text/csv"></div>
     <div id="previa"></div>
     <div class="small muted">
-      Esta planilha cadastra somente pessoas e acessos. Imóvel, contrato e valores ficam na planilha de Locações.<br>
-      Use <strong>Ação = Atualizar</strong> para processar a linha ou <strong>Ignorar</strong> para não importar.<br>
+      Use o modelo da Altha: colunas com <strong>*</strong> são obrigatórias e a coluna <strong>Ação</strong> decide o que fazer com quem já existe.<br>
+      Inquilino com <strong>imovel</strong> preenchido também cria a locação, vinculada ao proprietário pelo <strong>proprietario_email</strong>.<br>
       Sem senha, o sistema usa ${SENHA} e você troca depois.<br>
-      Quem já existe é reconhecido pelo e-mail ou CPF e terá os dados atualizados.
+      Quem já tem cadastro é reconhecido pelo e-mail ou pelo CPF: você escolhe se mantém o que está no sistema ou deixa a planilha atualizar.
     </div>`,
     `<button class="btn primary block" data-act="importarOK" id="btn_importar" disabled>Escolha um arquivo</button>`);
   const inp = $("#m_csv");
@@ -4097,49 +4110,42 @@ function analisaImportacao(dados) {
   const novos = [], erros = [];
   let ignoradas = 0;
   linhas.forEach((l, i) => {
-    const n = i + 2;
+    const n = i + 5;
     if (!String(l.tipo || "").trim() && !String(l.nome || "").trim() && !String(l.cpf || "").trim() && !String(l.email || "").trim()) return;
     if (/ignor/i.test(l.acao || "")) { ignoradas++; return; }
-
     const tipo = TIPO_PLANILHA[normCab(l.tipo || "")];
     if (!tipo) { erros.push(`Linha ${n}: identificador "${l.tipo || "vazio"}" não reconhecido.`); return; }
     if (!l.nome) { erros.push(`Linha ${n}: falta o nome.`); return; }
-
-    const cpf = cpfNorm(l.cpf || "");
-    if (cpf.length !== 11) { erros.push(`Linha ${n}: ${l.nome} está sem CPF válido.`); return; }
-
-    const email = (l.email || "").trim().toLowerCase();
-    const repetidoNoArquivo = novos.some(x => (email && x.email === email) || cpfIgual(x.cpf, cpf));
+    const email = (l.email || "").toLowerCase();
+    if (cpfNorm(l.cpf || "").length !== 11) { erros.push(`Linha ${n}: ${l.nome} está sem CPF válido.`); return; }
+    const repetidoNoArquivo = novos.some(x => (email && x.email === email) || cpfIgual(x.cpf, l.cpf));
     if (repetidoNoArquivo) { erros.push(`Linha ${n}: ${l.nome} aparece duas vezes na planilha.`); return; }
-
-    const existe = achaCadastro(email, cpf);
-    novos.push(Object.assign({}, l, {
-      tipo, cpf, email, acao: "atualizar",
-      jaExiste: existe ? existe.alvo.id : null,
-      jaTipo: existe ? existe.tipo : null
-    }));
+    const existe = achaCadastro(email, l.cpf);
+    if (tipo === "inquilino" && String(l.imovel || "").trim()) {
+      const pe = (l.proprietario_email || "").trim().toLowerCase();
+      if (!pe) { erros.push(`Linha ${n}: ${l.nome} tem imóvel preenchido, mas falta o e-mail do proprietário que liga a locação.`); return; }
+      const naPlanilha = linhas.some(x => (x.email || "").trim().toLowerCase() === pe && /propriet|locador/.test(normCab(x.tipo)));
+      const cadastrado = S.pessoas.some(x => (x.email || "").toLowerCase() === pe) || (S.usuarios || []).some(x => (x.email || "").toLowerCase() === pe);
+      if (!naPlanilha && !cadastrado) { erros.push(`Linha ${n}: o proprietário ${pe} não está nesta planilha nem cadastrado no sistema.`); return; }
+      if (!num0(l.aluguel)) { erros.push(`Linha ${n}: ${l.nome} tem imóvel preenchido, mas falta o valor do aluguel.`); return; }
+    }
+    novos.push(Object.assign({}, l, { tipo, email, acao: "atualizar", jaExiste: existe ? existe.alvo.id : null, jaTipo: existe ? existe.tipo : null }));
   });
-
   S.ui.importPrevia = novos;
   const box = document.getElementById("previa"), btn = document.getElementById("btn_importar");
   if (!box) return;
-
   const cont = t => novos.filter(x => x.tipo === t && !x.jaExiste).length;
   const repetidos = novos.filter(x => x.jaExiste);
+  const locs = novos.filter(x => x.tipo === "inquilino" && x.imovel && !x.jaExiste).length;
   const entram = novos.length;
-
   box.innerHTML = `<div class="lane" style="border-left-color:var(--${erros.length ? "warn" : "ok"});background:var(--surface-2);margin-bottom:14px">
     <div class="small" style="font-weight:500">${entram} ${entram === 1 ? "registro será processado" : "registros serão processados"}</div>
-    <div class="small muted">${cont("inquilino")} inquilinos novos · ${cont("proprietario")} proprietários novos · ${cont("equipe")} da equipe${ignoradas ? ` · ${ignoradas} ignorados` : ""}</div>
-    ${repetidos.length ? `<div class="small" style="margin-top:8px">${repetidos.length} ${repetidos.length === 1 ? "cadastro será atualizado" : "cadastros serão atualizados"}: ${esc(repetidos.slice(0, 4).map(r => r.nome).join(", "))}${repetidos.length > 4 ? " e outros" : ""}.</div>` : ""}
-    ${erros.length ? `<div class="small" style="color:var(--warn);margin-top:8px">${erros.length} ${erros.length === 1 ? "linha com erro" : "linhas com erro"}:</div>
+    <div class="small muted">${cont("inquilino")} inquilinos novos · ${cont("proprietario")} proprietários novos · ${cont("equipe")} da equipe · ${locs} ${locs === 1 ? "locação nova" : "locações novas"}</div>
+    ${repetidos.length ? `<div class="small" style="margin-top:8px">${repetidos.length} ${repetidos.length === 1 ? "cadastro será atualizado" : "cadastros serão atualizados"} conforme a coluna Ação: ${esc(repetidos.slice(0, 4).map(r => r.nome).join(", "))}${repetidos.length > 4 ? " e outros" : ""}.</div>` : ""}
+    ${erros.length ? `<div class="small" style="color:var(--warn);margin-top:8px">${erros.length} ${erros.length === 1 ? "linha ignorada" : "linhas ignoradas"}:</div>
       <div class="tiny muted">${erros.slice(0, 8).map(esc).join("<br>")}${erros.length > 8 ? "<br>…" : ""}</div>` : ""}
   </div>`;
-
-  if (btn) {
-    btn.disabled = !entram;
-    btn.textContent = entram ? `Importar ${entram} ${entram === 1 ? "registro" : "registros"}` : "Nada para importar";
-  }
+  if (btn) { btn.disabled = !entram; btn.textContent = entram ? `Importar ${entram} ${entram === 1 ? "registro" : "registros"}` : "Nada para importar"; }
 }
 A.importModo = el => { S.ui.importModo = el.value; const p = S.ui.importPrevia; if (p) { S.ui.importPrevia = p; analisaPrevia(); } };
 function analisaPrevia() {
@@ -4152,73 +4158,82 @@ function analisaPrevia() {
   if (linha) linha.textContent = `${entram} ${entram === 1 ? "registro será processado" : "registros serão processados"}`;
   if (btn) { btn.disabled = !entram; btn.textContent = entram ? `Importar ${entram} ${entram === 1 ? "registro" : "registros"}` : "Nada para importar"; }
 }
-A.importarOK = async () => {
+A.importarOK = () => {
   const todos = S.ui.importPrevia || [];
   const novos = todos.filter(l => !l.jaExiste);
   const repetidos = todos.filter(l => l.jaExiste);
   if (!novos.length && !repetidos.length) return;
-
-  const criados = { pessoas: 0, equipe: 0, atualizados: 0 };
-
+  const num = v => Number(String(v || "").replace(/\./g, "").replace(",", ".")) || 0;
+  const criados = { pessoas: 0, equipe: 0, locacoes: 0, atualizados: 0 };
+  const naoVinculadas = [];
   repetidos.forEach(l => {
-    const alvo = l.jaTipo === "equipe" ? (S.usuarios || []).find(u => u.id === l.jaExiste) : pessoa(l.jaExiste);
+    const alvo = l.jaTipo === "equipe" ? S.usuarios.find(u => u.id === l.jaExiste) : pessoa(l.jaExiste);
     if (!alvo) return;
-
     alvo.nome = l.nome || alvo.nome;
     if (l.email) alvo.email = l.email;
-    if (l.cpf) alvo.cpf = cpfNorm(l.cpf);
+    if (l.cpf) alvo.cpf = l.cpf;
     if (l.telefone) alvo.tel = l.telefone;
     if (l.canal) alvo.canal = l.canal;
-    if (l.senha) { alvo.senha = l.senha; alvo.senhaProvisoria = true; }
-
-    if (l.jaTipo === "equipe") {
-      if (l.cargo) alvo.cargo = l.cargo;
-      alvo.perfil = "imobiliaria";
-    } else {
-      alvo.papelPrevisto = l.tipo;
-    }
+    if (l.senha) alvo.senha = l.senha;
+    if (l.cargo && l.jaTipo === "equipe") alvo.cargo = l.cargo;
     criados.atualizados++;
+    if (l.jaTipo === "pessoa" && l.imovel) {
+      const loc = S.locacoes.find(x => x.inquilinoId === alvo.id && imovel(x.imovelId).apelido.trim().toLowerCase() === l.imovel.trim().toLowerCase());
+      if (loc) {
+        const im = imovel(loc.imovelId);
+        if (l.endereco) im.endereco = l.endereco;
+        if (num(l.aluguel)) { const r = loc.regras.find(r => r.tipo === "Aluguel"); if (r) r.valor = num(l.aluguel); }
+        if (num(l.taxa_administrativa)) { const r = loc.regras.find(r => r.tipo === "Taxa administrativa"); if (r) r.valor = num(l.taxa_administrativa); else loc.regras.push({ desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: num(l.taxa_administrativa), recebedor: "imobiliaria" }); }
+        if (Number(l.dia_vencimento)) loc.diaVenc = Math.min(28, Math.max(1, Number(l.dia_vencimento)));
+        log(loc.id, null, "Dados da locação atualizados pela importação de planilha.", origemAtual());
+      }
+    }
   });
-
   novos.filter(l => l.tipo === "equipe").forEach(l => {
-    S.usuarios.push({
-      id: uid("u"), nome: l.nome, cpf: cpfNorm(l.cpf), cargo: l.cargo || "",
-      email: l.email || "", tel: l.telefone || "", canal: l.canal || "",
-      senha: l.senha || SENHA, perfil: "imobiliaria", ativo: true,
-      senhaProvisoria: true, perms: { mensagens: true }
-    });
+    S.usuarios.push({ id: uid("u"), nome: l.nome, cpf: cpfNorm(l.cpf), cargo: l.cargo || "", email: l.email, senha: l.senha || SENHA, perfil: "imobiliaria", ativo: true, senhaProvisoria: true, perms: { mensagens: true } });
     criados.equipe++;
   });
-
   novos.filter(l => l.tipo !== "equipe").forEach(l => {
     S.pessoas.push({
-      id: uid("p"), senhaProvisoria: true, nome: l.nome, cpf: cpfNorm(l.cpf),
-      email: l.email || "—", tel: l.telefone || "—", canal: l.canal || "Portal",
-      senha: l.senha || SENHA, papelPrevisto: l.tipo,
-      origemCadastro: "planilha", criadoEm: agora(), ativo: true
+      id: uid("p"), senhaProvisoria: true, nome: l.nome, cpf: cpfNorm(l.cpf), email: l.email || "—", tel: l.telefone || "—",
+      canal: l.canal || "Portal", senha: l.senha || SENHA, papelPrevisto: l.tipo, origemCadastro: "planilha", criadoEm: agora()
     });
     criados.pessoas++;
   });
-
-  marca("usuarios");
-  marca("importacao");
-  S.ui.importPrevia = null;
-  S.ui.importModo = "ignorar";
-  marca("planilhaAltha");
-
-  fecharModal();
-  render();
-
+  novos.filter(l => l.tipo === "inquilino" && l.imovel).forEach(l => {
+    const inq = S.pessoas.find(p => cpfIgual(p.cpf, l.cpf))
+      || S.pessoas.find(p => (p.email || "").toLowerCase() === l.email && l.email);
+    const pe = (l.proprietario_email || "").toLowerCase();
+    const prop = S.pessoas.find(p => (p.email || "").toLowerCase() === pe && pe);
+    if (!inq || !prop) { naoVinculadas.push(l.imovel + " (" + l.nome + ")"); return; }
+    if (S.locacoes.some(x => x.inquilinoId === inq.id && imovel(x.imovelId).apelido.trim().toLowerCase() === String(l.imovel).trim().toLowerCase())) return;
+    const im = { id: uid("i"), apelido: l.imovel, endereco: l.endereco || "Endereço não informado", tipo: "Imóvel" };
+    S.imoveis.push(im);
+    const regras = [{ desc: "Aluguel", tipo: "Aluguel", valor: num(l.aluguel), recebedor: "proprietario" }];
+    if (/^s/i.test(l.condominio_por_boleto || "")) regras.push({ desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true });
+    if (/^s/i.test(l.agua_variavel || "")) regras.push({ desc: "Água", tipo: "Água", valor: 0, recebedor: "proprietario", variavel: true });
+    if (/^s/i.test(l.luz_variavel || "")) regras.push({ desc: "Energia", tipo: "Luz", valor: 0, recebedor: "proprietario", variavel: true });
+    if (num(l.taxa_administrativa)) regras.push({ desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: num(l.taxa_administrativa), recebedor: "imobiliaria" });
+    const loc = {
+      id: uid("l"), driveUrl: "", contratoUrl: "", imovelId: im.id, inquilinoId: inq.id, proprietarioId: prop.id,
+      inicio: hojeISO(), fim: "", diaVenc: Math.min(28, Math.max(1, Number(l.dia_vencimento) || 10)),
+      multa: "2% + 1% ao mês", pixImob: S.imobiliaria.pix, pixProp: prop.email !== "—" ? prop.email : "",
+      recebimentoProp: { forma: "PIX", chaveTipo: "E-mail", chave: prop.email !== "—" ? prop.email : "" }, regras
+    };
+    S.locacoes.push(loc);
+    achaOuCriaCobranca(loc.id, S.competencia);
+    log(loc.id, S.competencia, `Locação criada pela importação de planilha, com cobrança de ${compLabel(S.competencia)}.`, origemAtual());
+    criados.locacoes++;
+  });
+  marca("usuarios"); marca("importacao");
+  S.ui.importPrevia = null; S.ui.importModo = "ignorar"; marca("planilhaAltha");
+  fecharModal(); save(); render();
   const partes = [];
-  if (criados.pessoas) partes.push(`${criados.pessoas} ${criados.pessoas === 1 ? "pessoa criada" : "pessoas criadas"}`);
-  if (criados.equipe) partes.push(`${criados.equipe} ${criados.equipe === 1 ? "usuário da equipe criado" : "usuários da equipe criados"}`);
-  if (criados.atualizados) partes.push(`${criados.atualizados} ${criados.atualizados === 1 ? "cadastro atualizado" : "cadastros atualizados"}`);
-  try {
-    await saveAgora();
-    toast((partes.join(" · ") || "Nada a fazer.") + " · salvo no Google Sheets", true);
-  } catch (e) {
-    toast("A importação foi feita no app, mas não consegui gravar no Sheets: " + (e.message || e));
-  }
+  if (criados.pessoas + criados.equipe) partes.push(`${criados.pessoas + criados.equipe} acessos criados`);
+  if (criados.locacoes) partes.push(`${criados.locacoes} locações geradas`);
+  if (criados.atualizados) partes.push(`${criados.atualizados} cadastros atualizados`);
+  if (naoVinculadas.length) partes.push(`${naoVinculadas.length} locações não vinculadas`);
+  toast(partes.join(" · ") || "Nada a fazer.", true);
 };
 
 /* -- edição de locação e de cobrança -- */
@@ -4554,7 +4569,7 @@ A.novaLocacao = () => {
       <div class="field"><label for="m_inqtel">WhatsApp</label><input id="m_inqtel" placeholder="(54) 90000-0000"></div>
     </div>
     <div class="field"><label for="m_prop">Proprietário</label><select id="m_prop">
-      ${S.pessoas.filter(p => p.papelPrevisto === "proprietario" || S.locacoes.some(l => l.proprietarioId === p.id)).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join("")}
+      ${S.pessoas.filter(p => S.locacoes.some(l => l.proprietarioId === p.id)).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join("")}
       <option value="novo">Cadastrar novo proprietário</option></select></div>
     <div class="field" id="m_propnovo_wrap" style="display:none"><label for="m_propnovo">Nome do novo proprietário</label><input id="m_propnovo"></div>
     <h3 style="margin:14px 0 8px">Regras financeiras</h3>
@@ -4589,7 +4604,7 @@ A.novaLocacaoOK = () => {
   else pInq = pessoa($("#m_inqsel").value);
   let propId = $("#m_prop").value;
   if (propId === "novo") {
-    const np = { id: uid("p"), nome: $("#m_propnovo").value.trim() || "Proprietário sem nome", cpf: "—", email: "—", tel: "—", canal: "Portal", papelPrevisto: "proprietario" };
+    const np = { id: uid("p"), nome: $("#m_propnovo").value.trim() || "Proprietário sem nome", cpf: "—", email: "—", tel: "—", canal: "Portal" };
     S.pessoas.push(np); propId = np.id;
   }
   const regras = [{ desc: "Aluguel", tipo: "Aluguel", valor: aluguel, recebedor: "proprietario" }];
@@ -4639,10 +4654,6 @@ document.addEventListener("keydown", e => {
 
 /* ============ render ============ */
 function render() {
-  if (S && S.competencia) S.competencia = compISOsegura(S.competencia);
-  if (S && S.cobrancas) S.cobrancas.forEach(c => { c.competencia = compISOsegura(c.competencia); c.vencimento = dataISOsegura(c.vencimento); });
-  if (S && S.pagamentos) S.pagamentos.forEach(p => { p.competencia = compISOsegura(p.competencia); p.data = dataISOsegura(p.data); });
-  if (S && S.locacoes) S.locacoes.forEach(l => { l.inicio=dataISOsegura(l.inicio); l.fim=dataISOsegura(l.fim); });
   const app = document.getElementById("app");
   const p = S.ui.perfil;
   if (p && S.ui.trocarSenha) { app.innerHTML = viewTrocarSenha(); return; }
@@ -4652,11 +4663,11 @@ function render() {
   else app.innerHTML = viewProprietario();
 }
 
-S = load();
-if (!S.ui) S.ui = { perfil: null, pessoaId: null, view: "login", tab: "resumo", filtro: {} };
+S = seed();
+S.ui = { perfil: null, pessoaId: null, view: "login", tab: "resumo", filtro: {} };
 try {
   const uiSalva = JSON.parse(localStorage.getItem(KEY + "_ui") || "null");
-  if (uiSalva && uiSalva.ui) S.ui = Object.assign(S.ui, uiSalva.ui);
+  if (uiSalva && uiSalva.ui) S.ui = Object.assign(S.ui, uiSalva.ui, { loginPass: "", loginErro: null });
 } catch (e) { }
 render();
 iniciarSync();
