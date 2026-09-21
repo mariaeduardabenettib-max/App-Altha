@@ -667,6 +667,9 @@ async function apiPost(body) {
 }
 function aplicaEstadoRemoto(d) {
   if (!d || Number(d.v) !== VERSAO) throw new Error("Versão do banco incompatível com este app.");
+  // Se a pessoa estiver digitando o login enquanto o Sheets termina de carregar,
+  // preserva os campos antes de renderizar novamente.
+  if (S && S.ui && !S.ui.perfil && typeof guardaLogin === "function") guardaLogin();
   const antes = S ? resumo(S) : null;
   const ui = S && S.ui ? S.ui : null;
   // O Sheets pode devolver configurações parciais. Completa com os padrões do app
@@ -713,7 +716,7 @@ function agendaGravacao() {
 }
 const temMudancaLocal = () => rev !== revGravada || gravando;
 async function iniciarSync() {
-  MODO = "sheets"; render();
+  MODO = "sheets";
   try {
     const resp = await apiGet("load");
     const remoto = resp.state || {};
@@ -1012,6 +1015,13 @@ function contas() {
 const SENHA = "altha2026";
 const cpfNorm = v => { const d = String(v || "").replace(/\D/g, ""); return d.length && d.length <= 11 ? d.padStart(11, "0") : d; };
 const cpfIgual = (a, b) => { const x = cpfNorm(a), y = cpfNorm(b); return x.length === 11 && x === y; };
+const cpfLivre = (cpf, ignorarId) => {
+  const n = cpfNorm(cpf);
+  if (n.length !== 11) return false;
+  const emPessoas = (S.pessoas || []).some(p => p.id !== ignorarId && cpfIgual(p.cpf, n));
+  const emUsuarios = (S.usuarios || []).some(u => u.id !== ignorarId && cpfIgual(u.cpf, n));
+  return !emPessoas && !emUsuarios;
+};
 const soDigitos = s => String(s).replace(/\D/g, "");
 
 function viewTrocarSenha() {
@@ -1992,12 +2002,26 @@ function propDocumentos() {
   const locs = locacoesDoProprietario(S.ui.pessoaId).map(l => l.id);
   const docs = S.documentos.filter(d => locs.includes(d.locacaoId));
   const recs = S.recibos.filter(r => locs.includes(r.locacaoId));
-  const row = (nome, sub, acao, id) => `<div class="file"><span class="ico">PDF</span><span class="grow"><span class="truncate" style="font-weight:500">${esc(nome)}</span>
+  const cps = S.comprovantes.filter(c =>
+    locs.includes(c.locacaoId) &&
+    c.status === "aprovado" &&
+    c.recebedor === "proprietario"
+  );
+  const row = (nome, sub, acao, id, ico) => `<div class="file"><span class="ico">${ico || "PDF"}</span><span class="grow"><span class="truncate" style="font-weight:500">${esc(nome)}</span>
     <span class="small muted" style="display:block">${sub}</span></span>${acao ? `<button class="btn sm" data-act="${acao}" data-id="${id}">Abrir</button>` : ""}</div>`;
   return `<h1>Documentos</h1>
   <div class="card pad stack" style="gap:10px"><h3>Contas enviadas</h3>
     <div class="filelist">${docs.filter(d => ehConta(d)).map(d => row(d.nome, `${compLabel(d.competencia)} · ${money(d.valor)} · ${esc(d.origem)}`, "verBoleto", d.id)).join("") || `<div class="emptybox small">Nenhuma conta enviada ainda.</div>`}</div>
     <button class="btn block" data-act="enviarBoleto">Enviar conta</button>
+  </div>
+  <div class="card pad stack" style="gap:10px"><h3>Comprovantes recebidos</h3>
+    <div class="filelist">${cps.map(c => row(
+      c.nome,
+      `${compLabel(c.competencia)} · ${c.valorInformado ? money(c.valorInformado) : "valor não informado"} · aprovado`,
+      "verComprovante",
+      c.id,
+      c.mime && c.mime.startsWith("image") ? "IMG" : "PDF"
+    )).join("") || `<div class="emptybox small">Nenhum comprovante aprovado para você ainda.</div>`}</div>
   </div>
   <div class="card pad stack" style="gap:10px"><h3>Recibos, contratos e outros</h3>
     <div class="filelist">${[...recs.map(r => row(r.nome, `${compLabel(r.competencia)} · ${money(r.valor)}`, "verRecibo", r.id)),
@@ -2095,24 +2119,114 @@ function modal(titulo, corpo, rodape) {
   document.body.appendChild(d); MODAL = d;
   const f = d.querySelector("input,select,textarea,button.primary"); if (f) f.focus();
 }
-function fecharModal() { if (MODAL) { MODAL.remove(); MODAL = null; } }
+function fecharModal() {
+  if (MODAL) { MODAL.remove(); MODAL = null; }
+  if (URL_ARQUIVO_ATUAL) {
+    try { URL.revokeObjectURL(URL_ARQUIVO_ATUAL); } catch (_) {}
+    URL_ARQUIVO_ATUAL = null;
+  }
+}
 function imprimir(html) { document.getElementById("print-area").innerHTML = html; window.print(); }
 
 /* ============ leitura de arquivo ============ */
 function lerArquivo(input, cb) {
   const f = input && input.files && input.files[0];
   if (!f) { cb(null); return; }
+
+  const limite = 8 * 1024 * 1024;
+  if (f.size > limite) {
+    toast("O arquivo precisa ter no máximo 8 MB.");
+    cb(null);
+    return;
+  }
+
   const meta = { nome: f.name, tamanho: f.size, mime: f.type || "application/octet-stream", dataUrl: null };
-  if (f.type.startsWith("image/") && f.size <= 420000) {
-    const r = new FileReader();
-    r.onload = () => { meta.dataUrl = r.result; cb(meta); };
-    r.onerror = () => cb(meta);
-    r.readAsDataURL(f);
-  } else cb(meta);
+  const r = new FileReader();
+  r.onload = () => { meta.dataUrl = r.result; cb(meta); };
+  r.onerror = () => { toast("Não consegui ler o arquivo selecionado."); cb(null); };
+  r.readAsDataURL(f);
+}
+
+function nomeClienteArquivo(locacaoId, tipoDocumento) {
+  const l = locacao(locacaoId);
+  if (!l) return "Cliente";
+  const id = tipoDocumento === "Boleto" ? l.proprietarioId : l.inquilinoId;
+  const p = pessoa(id);
+  return p && p.nome ? p.nome : "Cliente";
+}
+
+async function subirArquivoTecnico(meta, tipoDocumento, locacaoId, competencia) {
+  if (!meta || !meta.dataUrl) throw new Error("Selecione um arquivo.");
+  const r = await apiPost({
+    action: "uploadfile",
+    documentType: tipoDocumento,
+    clientName: nomeClienteArquivo(locacaoId, tipoDocumento),
+    locacaoId: locacaoId || "",
+    competencia: competencia || "",
+    file: { name: meta.nome, mime: meta.mime, size: Number(meta.tamanho || 0), dataUrl: meta.dataUrl }
+  });
+  if (!r.file || !r.file.id) throw new Error("O arquivo não foi armazenado.");
+  return r.file;
+}
+
+let URL_ARQUIVO_ATUAL = null;
+
+function dataUrlParaBlob(dataUrl) {
+  const partes = String(dataUrl || "").split(",");
+  if (partes.length < 2) throw new Error("Arquivo inválido.");
+  const mime = ((partes[0].match(/^data:([^;]+)/) || [])[1]) || "application/octet-stream";
+  const bin = atob(partes.slice(1).join(","));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function carregarArquivoTecnico(fileId) {
+  const r = await apiPost({ action: "getfile", fileId });
+  if (!r.file || !r.file.dataUrl) throw new Error("Arquivo não encontrado.");
+  return r.file;
 }
 
 /* ============ ações ============ */
 const A = {};
+
+A.abrirArquivoTecnico = async el => {
+  const fileId = el.dataset.file;
+  if (!fileId) { toast("Este registro não possui arquivo anexado."); return; }
+
+  modal("Arquivo", `<div class="emptybox">Carregando arquivo…</div>`,
+    `<button class="btn block" data-act="fecharModal">Fechar</button>`);
+
+  try {
+    const arq = await carregarArquivoTecnico(fileId);
+    if (URL_ARQUIVO_ATUAL) {
+      try { URL.revokeObjectURL(URL_ARQUIVO_ATUAL); } catch (_) {}
+    }
+    URL_ARQUIVO_ATUAL = URL.createObjectURL(dataUrlParaBlob(arq.dataUrl));
+
+    const nome = esc(arq.name || "arquivo");
+    const mime = arq.mime || "";
+    let corpo;
+    if (/^image\//i.test(mime)) {
+      corpo = `<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px">
+        <img src="${URL_ARQUIVO_ATUAL}" alt="${nome}" style="display:block;width:100%;max-height:62vh;object-fit:contain;border-radius:6px">
+      </div>`;
+    } else {
+      corpo = `<div class="lane" style="background:var(--surface-2)">
+        <div class="small" style="font-weight:500">${nome}</div>
+        <div class="tiny muted" style="margin-top:4px">${kb(Number(arq.size || 0))}${/pdf/i.test(mime) ? " · PDF" : ""}</div>
+        <a class="btn primary block" style="margin-top:10px" href="${URL_ARQUIVO_ATUAL}" target="_blank" rel="noopener">Abrir arquivo</a>
+      </div>`;
+    }
+
+    modal("Arquivo", corpo,
+      `<div class="row"><button class="btn grow" data-act="fecharModal">Fechar</button>
+      <a class="btn primary grow" href="${URL_ARQUIVO_ATUAL}" target="_blank" rel="noopener">Abrir em nova aba</a></div>`);
+  } catch (e) {
+    modal("Arquivo", `<div class="login-err">${esc(e.message || "Não foi possível abrir o arquivo.")}</div>`,
+      `<button class="btn block" data-act="fecharModal">Fechar</button>`);
+  }
+};
 
 A.criarAcesso = () => {
   modal("Criar meu acesso de teste", `
@@ -2649,6 +2763,11 @@ A.abrirMensagem = el => {
   if (!pode("mensagens")) return negado("mensagens");
   const m = S.mensagens.find(x => x.id === el.dataset.id); if (!m) return;
   const l = locacao(m.locacaoId);
+  const encaminharPara = m.perfilDe === "inquilino"
+    ? "proprietario"
+    : m.perfilDe === "proprietario"
+      ? "inquilino"
+      : null;
   const bolha = (quem, texto, quando, meu) => `<div class="lane ${meu ? "" : "prop"}" style="border-left-color:var(--${meu ? "brand" : "prop"});margin-bottom:8px">
     <div class="tiny muted">${esc(quem)} · ${dHora(quando)}</div><div class="small" style="margin-top:4px">${esc(texto)}</div></div>`;
   modal(m.assunto, `
@@ -2664,10 +2783,9 @@ A.abrirMensagem = el => {
     `<div class="stack" style="gap:8px">
       <button class="btn primary block" data-act="responderMensagem" data-id="${m.id}">Responder pelo portal</button>
       <button class="btn block" data-act="respZap" data-id="${m.id}">Responder por WhatsApp</button>
-      <div class="row even" style="gap:8px">
-        <button class="btn grow" data-act="encaminharMsg" data-id="${m.id}" data-para="proprietario">Encaminhar ao proprietário</button>
-        <button class="btn grow" data-act="encaminharMsg" data-id="${m.id}" data-para="inquilino">Encaminhar ao inquilino</button>
-      </div>
+      ${encaminharPara ? `<button class="btn block" data-act="encaminharMsg" data-id="${m.id}" data-para="${encaminharPara}">
+        Encaminhar ao ${encaminharPara === "proprietario" ? "proprietário" : "inquilino"}
+      </button>` : ""}
      </div>`);
 };
 function textoEncaminhamento(m, para) {
@@ -2682,7 +2800,8 @@ A.encaminharMsg = el => {
   if (!pode("mensagens")) return negado("mensagens");
   const m = S.mensagens.find(x => x.id === el.dataset.id); if (!m) return;
   const l = locacao(m.locacaoId);
-  const para = el.dataset.para || (m.perfilDe === "proprietario" ? "inquilino" : "proprietario");
+  const para = m.perfilDe === "inquilino" ? "proprietario" : m.perfilDe === "proprietario" ? "inquilino" : null;
+  if (!para) { toast("Esta mensagem não precisa ser reencaminhada."); return; }
   const prop = para === "inquilino" ? pessoa(l.inquilinoId) : pessoa(l.proprietarioId);
   const texto = textoEncaminhamento(m, para);
   const fone = soDigitos(prop.tel).replace(/^0+/, "");
@@ -2700,11 +2819,11 @@ A.encaminharMsg = el => {
       <span class="hint">Pode editar antes de enviar. Os botões abrem o WhatsApp ou seu programa de e-mail com a mensagem pronta. Se algum não abrir no seu aparelho, use Copiar texto.</span></div>`,
     `<div class="stack" style="gap:8px">
       <div class="row even" style="gap:8px">
-        <a class="btn primary grow" id="lnk_zap" href="${esc(zap)}" target="_blank" rel="noopener" data-act="encaminhado" data-id="${m.id}" data-nome="${esc(prop.nome)}">Abrirno WhatsApp</a>
-        <a class="btn grow" id="lnk_mail" href="${esc(mail)}" data-act="encaminhado" data-id="${m.id}" data-nome="${esc(prop.nome)}">Enviar por e-mail</a>
+        <a class="btn primary grow" id="lnk_zap" href="${esc(zap)}" target="_blank" rel="noopener" data-act="encaminhado" data-id="${m.id}" data-nome="${esc(prop.nome)}" data-canal="WhatsApp" data-para="${para}">Abrir no WhatsApp</a>
+        <a class="btn grow" id="lnk_mail" href="${esc(mail)}" data-act="encaminhado" data-id="${m.id}" data-nome="${esc(prop.nome)}" data-canal="e-mail" data-para="${para}">Enviar por e-mail</a>
       </div>
       <button class="btn block primary" data-act="encPortal" data-id="${m.id}" data-para="${para}">Encaminhar pelo portal ${para === "inquilino" ? "do inquilino" : "do proprietário"}</button>
-      <button class="btn block" data-act="copiarEnc" data-id="${m.id}">Copiar texto</button>
+      <button class="btn block" data-act="copiarEnc" data-id="${m.id}" data-para="${para}">Copiar texto</button>
      </div>`);
   const ta = $("#m_enc");
   if (ta) ta.addEventListener("input", () => {
@@ -2713,19 +2832,22 @@ A.encaminharMsg = el => {
     $("#lnk_mail").href = "mailto:" + prop.email + "?subject=" + encodeURIComponent(`${m.assunto} · ${imovel(l.imovelId).apelido}`) + "&body=" + encodeURIComponent(t);
   });
 };
-function registraEncaminhamento(m, canal, nomeDestino) {
-  const l = locacao(m.locacaoId), prop = { nome: nomeDestino || pessoa(l.proprietarioId).nome };
+function registraEncaminhamento(m, canal, nomeDestino, paraPerfil) {
+  const l = locacao(m.locacaoId);
+  const destinoPadrao = paraPerfil === "inquilino" ? pessoa(l.inquilinoId) : pessoa(l.proprietarioId);
+  const nome = nomeDestino || destinoPadrao.nome;
   m.encaminhamentos = m.encaminhamentos || [];
-  m.encaminhamentos.push({ canal, para: prop.nome, em: agora(), por: quemSou(), texto: ($("#m_enc") ? $("#m_enc").value : m.texto) });
-  if (m.status !== "Resolvida") m.status = "Aguardando proprietário";
+  m.encaminhamentos.push({ canal, para: nome, perfil: paraPerfil, em: agora(), por: quemSou(), texto: ($("#m_enc") ? $("#m_enc").value : m.texto) });
+  if (m.status !== "Resolvida") m.status = paraPerfil === "inquilino" ? "Aguardando cliente" : "Aguardando proprietário";
   marca("encaminhar");
-  log(m.locacaoId, null, `Mensagem sobre ${m.assunto} encaminhada a ${prop.nome} por ${canal}.`, canal);
+  log(m.locacaoId, null, `Mensagem sobre ${m.assunto} encaminhada a ${nome} por ${canal}.`, canal);
   marca("mensagens");
   save();
 }
 A.encPortal = el => {
   const m = S.mensagens.find(x => x.id === el.dataset.id); if (!m) return;
-  const para = el.dataset.para || "proprietario";
+  const para = m.perfilDe === "inquilino" ? "proprietario" : m.perfilDe === "proprietario" ? "inquilino" : null;
+  if (!para) { toast("Esta mensagem não precisa ser reencaminhada."); return; }
   const l = locacao(m.locacaoId), destino = para === "inquilino" ? pessoa(l.inquilinoId) : pessoa(l.proprietarioId);
   const texto = $("#m_enc") ? $("#m_enc").value : textoEncaminhamento(m, para);
   S.mensagens.push({
@@ -2733,7 +2855,7 @@ A.encPortal = el => {
     de: S.imobiliaria.nome, perfilDe: "imobiliaria", encaminhadaPara: para, origemMsg: m.id,
     em: agora(), status: para === "inquilino" ? "Aguardando cliente" : "Aguardando proprietário", respostas: []
   });
-  registraEncaminhamento(m, "portal", destino.nome);
+  registraEncaminhamento(m, "portal", destino.nome, para);
   fecharModal(); save(); render();
   toast("Encaminhada pelo portal. " + destino.nome.split(" ")[0] + " já vê na aba Mensagens.", true);
 };
@@ -2748,7 +2870,7 @@ A.respZap = el => {
     <div class="lane" style="background:var(--surface-2);margin-bottom:12px"><div class="tiny muted">Mensagem recebida</div>
       <div class="small" style="margin-top:4px">${esc(m.texto)}</div></div>
     <div class="field"><label for="m_rz">Sua resposta</label><textarea id="m_rz" style="min-height:150px">${esc(base)}</textarea></div>`,
-    `<a class="btn primary block" id="lnk_rz" href="${esc(zapDe(quem.tel, base))}" target="_blank" rel="noopener" data-act="respZapOK" data-id="${m.id}">Abrirno WhatsApp</a>`);
+    `<a class="btn primary block" id="lnk_rz" href="${esc(zapDe(quem.tel, base))}" target="_blank" rel="noopener" data-act="respZapOK" data-id="${m.id}">Abrir no WhatsApp</a>`);
   const ta = $("#m_rz");
   if (ta) ta.addEventListener("input", () => { $("#lnk_rz").href = zapDe(quem.tel, ta.value); });
 };
@@ -2764,13 +2886,16 @@ A.respZapOK = el => {
 };
 A.encaminhado = el => {
   const m = S.mensagens.find(x => x.id === el.dataset.id); if (!m) return;
-  registraEncaminhamento(m, EXTERNA, el.dataset.nome);
-  setTimeout(() => { fecharModal(); render(); toast(`Encaminhada por ${el.dataset.canal}. Situação: aguardando proprietário.`, true); }, 60);
+  const para = el.dataset.para;
+  const canal = el.dataset.canal || EXTERNA;
+  registraEncaminhamento(m, canal, el.dataset.nome, para);
+  const situacao = para === "inquilino" ? "aguardando cliente" : "aguardando proprietário";
+  setTimeout(() => { fecharModal(); render(); toast(`Encaminhada por ${canal}. Situação: ${situacao}.`, true); }, 60);
 };
 A.copiarEnc = el => {
   const m = S.mensagens.find(x => x.id === el.dataset.id);
   copiarTexto($("#m_enc").value, "Texto copiado. Cole no WhatsApp ou no e-mail.");
-  registraEncaminhamento(m, "cópia manual");
+  registraEncaminhamento(m, "cópia manual", null, el.dataset.para);
   setTimeout(() => { fecharModal(); render(); }, 60);
 };
 A.responderMensagem = el => {
@@ -2801,8 +2926,11 @@ A.liberarBoleto = el => {
 A.verCompetencia = el => { S.ui.cobrancaId = el.dataset.id; marca("competencia"); go("inq.cobranca"); };
 A.verBoleto = el => {
   const b = docPorId(el.dataset.id); if (!b) return;
-  modal("Boleto de condomínio", boletoHTML(b),
-    `<div class="row"><button class="btn grow" data-act="fecharModal">Fechar</button><button class="btn primary grow" data-act="imprimirBoleto" data-id="${b.id}">Salvar em PDF</button></div>`);
+  const abrir = b.driveFileId
+    ? `<button class="btn primary block" style="margin-bottom:10px" data-act="abrirArquivoTecnico" data-file="${esc(b.driveFileId)}">Visualizar arquivo original</button>`
+    : "";
+  modal("Conta / boleto", `${abrir}${boletoHTML(b)}`,
+    `<div class="row"><button class="btn grow" data-act="fecharModal">Fechar</button><button class="btn primary grow" data-act="imprimirBoleto" data-id="${b.id}">Salvar resumo em PDF</button></div>`);
 };
 A.imprimirBoleto = el => { const b = docPorId(el.dataset.id); fecharModal(); imprimir(boletoHTML(b)); };
 A.verRecibo = el => {
@@ -2843,25 +2971,24 @@ A.verComprovante = el => {
 };
 
 function visualComprovante(cp) {
+  if (cp.driveFileId) {
+    return `<div class="lane" style="background:var(--surface-2);margin-bottom:12px">
+      <div class="small" style="font-weight:500">${esc(cp.nome || cp.nomeOriginal || "Comprovante")}</div>
+      <div class="tiny muted" style="margin:4px 0 8px">${kb(cp.tamanho)} · ${/pdf/i.test(cp.mime || cp.nome || "") ? "PDF" : "arquivo"}</div>
+      <button class="btn sm block primary" data-act="abrirArquivoTecnico" data-file="${esc(cp.driveFileId)}">Visualizar arquivo</button>
+    </div>`;
+  }
   if (cp.dataUrl && /^data:image/.test(cp.dataUrl)) {
     return `<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:12px">
       <img src="${cp.dataUrl}" alt="Comprovante enviado" style="display:block;width:100%;max-height:58vh;object-fit:contain;border-radius:6px">
-      <a class="btn sm block" style="margin-top:8px" href="${cp.dataUrl}" target="_blank" rel="noopener" download="${esc(cp.nome)}">Abrirem tamanho real</a>
-    </div>`;
-  }
-  if (cp.dataUrl) {
-    return `<div class="lane" style="background:var(--surface-2);margin-bottom:12px">
-      <div class="small" style="font-weight:500">${esc(cp.nome)}</div>
-      <div class="tiny muted" style="margin:4px 0 8px">${kb(cp.tamanho)} · ${/pdf/i.test(cp.nome) ? "PDF" : "arquivo"}</div>
-      <a class="btn sm block" href="${cp.dataUrl}" target="_blank" rel="noopener" download="${esc(cp.nome)}">Abrirarquivo</a>
     </div>`;
   }
   return `<div class="lane" style="background:var(--surface-2);margin-bottom:12px">
-    <div class="small" style="font-weight:500">${esc(cp.nome)}</div>
-    <div class="tiny muted" style="margin-top:4px">${kb(cp.tamanho)} · enviado ${dHora(cp.enviadoEm)}</div>
-    <div class="tiny muted" style="margin-top:6px">Este é um comprovante de exemplo do piloto, sem arquivo real anexado.</div>
+    <div class="small" style="font-weight:500">${esc(cp.nome || "Comprovante")}</div>
+    <div class="tiny muted" style="margin-top:6px">O registro existe, mas não há um arquivo armazenado para visualização.</div>
   </div>`;
 }
+
 function analisaAuto(cp) {
   const c = cobranca(cp.cobrancaId);
   if (!c) return null;
@@ -2913,20 +3040,27 @@ A.enviarComprovante = el => {
 A.enviarComprovanteOK = el => {
   const c = cobranca(el.dataset.id);
   const rec = $("#m_rec").value, val = Number($("#m_val").value || 0);
-  lerArquivo($("#m_file"), meta => {
-    const arq = meta || { nome: "comprovante.pdf", tamanho: 180000, mime: "application/pdf", dataUrl: null };
-    const padronizado = nomeArquivo("Comprovantes", { locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec, ext: extDe(arq.nome) });
-    const cp = {
-      id: uid("cp"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
-      nome: padronizado, nomeOriginal: arq.nome, tamanho: arq.tamanho, mime: arq.mime, dataUrl: arq.dataUrl,
-      origem: origemAtual(), enviadoPor: quemSou(), enviadoEm: agora(), status: "em_analise", valorInformado: val
-    };
-    S.comprovantes.push(cp);
+  const input = $("#m_file");
+  if (!input || !input.files || !input.files[0]) { toast("Selecione o arquivo do comprovante."); return; }
 
-    log(c.locacaoId, c.competencia, `Comprovante recebido para o pagamento ${rec === "imobiliaria" ? "à imobiliária" : "ao proprietário"} (${money(val)}).`, origemAtual());
-    if (S.ui.perfil === "imobiliaria") marca("comprovante");
-    fecharModal(); save(); render();
-    toast("Comprovante enviado. A imobiliária vai conferir.", true);
+  lerArquivo(input, async meta => {
+    if (!meta || !meta.dataUrl) return;
+    try {
+      const salvo = await subirArquivoTecnico(meta, "Comprovante", c.locacaoId, c.competencia);
+      const padronizado = nomeArquivo("Comprovantes", { locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec, ext: extDe(meta.nome) });
+      S.comprovantes.push({
+        id: uid("cp"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
+        nome: padronizado, nomeOriginal: meta.nome, tamanho: meta.tamanho, mime: meta.mime, dataUrl: null,
+        driveFileId: salvo.id, origem: origemAtual(), enviadoPor: quemSou(), enviadoEm: agora(),
+        status: "em_analise", valorInformado: val
+      });
+      log(c.locacaoId, c.competencia, `Comprovante recebido para o pagamento ${rec === "imobiliaria" ? "à imobiliária" : "ao proprietário"} (${money(val)}).`, origemAtual());
+      if (S.ui.perfil === "imobiliaria") marca("comprovante");
+      fecharModal(); save(); render();
+      toast("Comprovante enviado. A imobiliária vai conferir.", true);
+    } catch (e) {
+      toast(e.message || "Não foi possível enviar o comprovante.");
+    }
   });
 };
 
@@ -2951,28 +3085,37 @@ A.anexarComprovante = el => {
 A.anexarComprovanteOK = el => {
   const c = cobranca(el.dataset.id);
   const rec = $("#m_rec").value, val = Number($("#m_val").value || 0), orig = $("#m_orig").value, pagar = $("#m_pagar").checked;
-  lerArquivo($("#m_file"), meta => {
-    const arq = meta || { nome: "comprovante.pdf", tamanho: 165000, mime: "application/pdf", dataUrl: null };
-    const padronizado = nomeArquivo("Comprovantes", { locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec, ext: extDe(arq.nome) });
-    const cp = {
-      id: uid("cp"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
-      nome: padronizado, nomeOriginal: arq.nome, tamanho: arq.tamanho, mime: arq.mime, dataUrl: arq.dataUrl,
-      origem: orig, enviadoPor: quemSou(), enviadoEm: agora(), status: pagar ? "aprovado" : "em_analise", valorInformado: val
-    };
-    S.comprovantes.push(cp);
+  const input = $("#m_file");
+  if (!input || !input.files || !input.files[0]) { toast("Selecione o arquivo do comprovante."); return; }
 
-    if (pagar) {
-      S.pagamentos.push({
-        id: uid("pg"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
-        valor: val, data: hojeISO(), forma: "PIX", chavePix: chaveDe(cp.locacaoId, rec), origem: orig, comprovanteId: cp.id, registradoPor: quemSou(), registradoEm: agora(), obs: "Registrado pela imobiliária"
-      });
+  lerArquivo(input, async meta => {
+    if (!meta || !meta.dataUrl) return;
+    try {
+      const salvo = await subirArquivoTecnico(meta, "Comprovante", c.locacaoId, c.competencia);
+      const padronizado = nomeArquivo("Comprovantes", { locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec, ext: extDe(meta.nome) });
+      const cp = {
+        id: uid("cp"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
+        nome: padronizado, nomeOriginal: meta.nome, tamanho: meta.tamanho, mime: meta.mime, dataUrl: null,
+        driveFileId: salvo.id, origem: orig, enviadoPor: quemSou(), enviadoEm: agora(),
+        status: pagar ? "aprovado" : "em_analise", valorInformado: val
+      };
+      S.comprovantes.push(cp);
+      if (pagar) {
+        S.pagamentos.push({
+          id: uid("pg"), cobrancaId: c.id, locacaoId: c.locacaoId, competencia: c.competencia, recebedor: rec,
+          valor: val, data: hojeISO(), forma: "PIX", chavePix: chaveDe(cp.locacaoId, rec), origem: orig,
+          comprovanteId: cp.id, registradoPor: quemSou(), registradoEm: agora(), obs: "Registrado pela imobiliária"
+        });
+      }
+      log(c.locacaoId, c.competencia, `Comprovante anexado pela imobiliária (origem ${orig})${pagar ? ` e pagamento de ${money(val)} registrado.` : " e enviado para conferência."}`, orig);
+      marca("comprovante"); marca("ocr");
+      const r = pagar ? emiteRecibo(c) : null;
+      fecharModal(); save(); render();
+      toast(r ? `Cobrança quitada. Recibo ${r.numero} emitido.` : "Comprovante anexado.", true);
+      if (r) mostraRecibo(r, true);
+    } catch (e) {
+      toast(e.message || "Não foi possível anexar o comprovante.");
     }
-    log(c.locacaoId, c.competencia, `Comprovante anexado pela imobiliária (origem ${orig})${pagar ? ` e pagamento de ${money(val)} registrado.` : " e enviado para conferência."}`, orig);
-    marca("comprovante"); marca("ocr");
-    const r = pagar ? emiteRecibo(c) : null;
-    fecharModal(); save(); render();
-    toast(r ? `Cobrança quitada. Recibo ${r.numero} emitido.` : "Comprovante anexado.", true);
-    if (r) mostraRecibo(r, true);
   });
 };
 
@@ -3119,18 +3262,28 @@ A.enviarBoleto = el => {
 };
 A.enviarBoletoOK = () => {
   const locId = $("#m_loc").value, comp = $("#m_comp").value, val = Number($("#m_val").value || 0), venc = $("#m_venc").value;
-  if (!val) { toast("Informe o valor do boleto."); return; }
-  lerArquivo($("#m_file"), meta => {
-    const arq = meta || { nome: "boleto.pdf", tamanho: 82000, mime: "application/pdf", dataUrl: null };
-    S.boletosPendentes.push({
-      id: uid("bp"), locacaoId: locId, competencia: comp, tipoConta: $("#m_tipoconta") ? $("#m_tipoconta").value : "Condomínio",
-      valor: val, vencimento: venc || `${comp}-10`,
-      nome: nomeArquivo("Boletos", { locacaoId: locId, competencia: comp, ext: extDe(arq.nome) }), nomeOriginal: arq.nome, tamanho: arq.tamanho, obs: $("#m_obs").value, origem: PORTAL,
-      criadoPor: quemSou(), criadoEm: agora(), status: "pendente"
-    });
-    log(locId, comp, `Conta de ${$("#m_tipoconta") ? $("#m_tipoconta").value.toLowerCase() : "condomínio"} de ${money(val)} enviada pelo proprietário e aguardando aprovação.`, origemAtual());
-    fecharModal(); save(); render();
-    toast("Conta enviada. Situação: aguardando imobiliária.", true);
+  if (!val) { toast("Informe o valor da conta."); return; }
+  const input = $("#m_file");
+  if (!input || !input.files || !input.files[0]) { toast("Selecione o arquivo da conta ou boleto."); return; }
+
+  lerArquivo(input, async meta => {
+    if (!meta || !meta.dataUrl) return;
+    try {
+      const salvo = await subirArquivoTecnico(meta, "Boleto", locId, comp);
+      S.boletosPendentes.push({
+        id: uid("bp"), locacaoId: locId, competencia: comp,
+        tipoConta: $("#m_tipoconta") ? $("#m_tipoconta").value : "Condomínio",
+        valor: val, vencimento: venc || `${comp}-10`,
+        nome: nomeArquivo("Boletos", { locacaoId: locId, competencia: comp, ext: extDe(meta.nome) }),
+        nomeOriginal: meta.nome, tamanho: meta.tamanho, mime: meta.mime, driveFileId: salvo.id,
+        obs: $("#m_obs").value, origem: PORTAL, criadoPor: quemSou(), criadoEm: agora(), status: "pendente"
+      });
+      log(locId, comp, `Conta de ${$("#m_tipoconta") ? $("#m_tipoconta").value.toLowerCase() : "condomínio"} de ${money(val)} enviada pelo proprietário e aguardando aprovação.`, origemAtual());
+      fecharModal(); save(); render();
+      toast("Conta enviada. Situação: aguardando imobiliária.", true);
+    } catch (e) {
+      toast(e.message || "Não foi possível enviar a conta.");
+    }
   });
 };
 A.aprovarBoleto = el => {
@@ -3146,11 +3299,13 @@ A.aprovarBoleto = el => {
       <div class="spread small"><span class="muted">Valor</span><span class="money">${money(b.valor)}</span></div>
       <div class="spread small"><span class="muted">Vencimento</span><span>${dBR(b.vencimento)}</span></div>
       <div class="spread small"><span class="muted">Arquivo</span><span class="truncate" style="max-width:55%">${esc(b.nome)}</span></div>
+      ${b.driveFileId ? `<button class="btn primary block" data-act="abrirArquivoTecnico" data-file="${esc(b.driveFileId)}">Visualizar arquivo enviado</button>` : `<div class="tiny muted">Arquivo não disponível para visualização.</div>`}
       <div class="spread small"><span class="muted">Enviado por</span><span>${esc(b.criadoPor)} · ${dHora(b.criadoEm)}</span></div>
       ${b.obs ? `<div class="small muted">Observação: ${esc(b.obs)}</div>` : ""}
     </div>
-    <div class="field"><label><input type="checkbox" id="m_vis" checked style="width:auto;margin-right:6px">Disponibilizar ao inquilino agora</label>
-      <span class="hint">Se desmarcar, o boleto fica só no histórico até você liberar.</span></div>`,
+    <div class="lane" style="background:var(--surface-2)">
+      <div class="small">Ao aprovar, esta conta ficará disponível para o inquilino visualizar no portal.</div>
+    </div>`,
     `<div class="stack" style="gap:8px">
       <button class="btn primary block" data-act="aprovarBoletoOK" data-id="${b.id}">Aprovar e vincular</button>
       <div class="row even" style="gap:8px">
@@ -3183,13 +3338,14 @@ A.recusarContaOK = el => {
 };
 A.aprovarBoletoOK = el => {
   const b = S.boletosPendentes.find(x => x.id === el.dataset.id);
-  const vis = $("#m_vis").checked;
+  const vis = true;
   const c = achaOuCriaCobranca(b.locacaoId, b.competencia);
   const tipoConta = b.tipoConta || "Condomínio";
   const doc = {
     id: uid("bol"), tipo: "Conta", conta: tipoConta, nome: b.nome, locacaoId: b.locacaoId, cobrancaId: c.id,
     competencia: b.competencia, valor: b.valor, vencimento: b.vencimento, origem: b.origem,
     criadoEm: agora(), criadoPor: b.criadoPor, visivelInquilino: vis,
+    tamanho: Number(b.tamanho || 0), mime: b.mime || "", driveFileId: b.driveFileId || "",
     linhaDigitavel: "34191.79001 01043.510047 91020.150008 8 " + String(Math.round(b.valor * 100)).padStart(14, "0")
   };
   S.documentos.push(doc);
@@ -3326,7 +3482,7 @@ A.avisarZap = el => {
     ${!S.config.linkPortal ? `<div class="lane" style="border-left-color:var(--warn);background:var(--warn-soft);margin-bottom:12px"><div class="small">Informe o endereço do portal em Usuários para o link entrar na mensagem.</div></div>` : ""}
     <div class="field"><label for="m_zap">Mensagem</label><textarea id="m_zap" style="min-height:190px">${esc(texto)}</textarea></div>`,
     `<div class="stack" style="gap:8px">
-      <a class="btn primary block" id="lnk_av" href="${esc(zapDe(inq.tel, texto))}" target="_blank" rel="noopener" data-act="avisado" data-id="${c.id}" data-tipo="${tipo}">Abrirno WhatsApp</a>
+      <a class="btn primary block" id="lnk_av" href="${esc(zapDe(inq.tel, texto))}" target="_blank" rel="noopener" data-act="avisado" data-id="${c.id}" data-tipo="${tipo}">Abrir no WhatsApp</a>
       <button class="btn block" data-act="copiarAviso" data-id="${c.id}" data-tipo="${tipo}">Copiar mensagem</button>
      </div>`);
   const ta = $("#m_zap");
@@ -3838,19 +3994,51 @@ A.novaLocacaoOK = () => {
   const novoInq = $("#m_inqsel").value === "novo";
   const inq = novoInq ? $("#m_inq").value.trim() : "";
   const aluguel = Number($("#m_aluguel").value || 0), taxa = Number($("#m_taxa").value || 0);
-  if (!ap || (novoInq && !inq) || !aluguel) { toast("Preencha ao menos identificação do imóvel, inquilino e aluguel."); return; }
-  if (novoInq && soDigitos($("#m_inqcpf").value).length !== 11) { toast("Informe o CPF do inquilino."); return; }
-  if (novoInq && !cpfLivre($("#m_inqcpf").value)) { toast("Esse CPF já está cadastrado. Escolha a pessoa na lista."); return; }
+
+  if (!ap || (novoInq && !inq) || !aluguel) {
+    toast("Preencha ao menos identificação do imóvel, inquilino e aluguel.");
+    return;
+  }
+  if (novoInq && soDigitos($("#m_inqcpf").value).length !== 11) {
+    toast("Informe o CPF do inquilino.");
+    return;
+  }
+  if (novoInq && !cpfLivre($("#m_inqcpf").value)) {
+    toast("Esse CPF já está cadastrado. Escolha a pessoa na lista.");
+    return;
+  }
+
+  let pInq;
+  if (novoInq) {
+    pInq = {
+      id: uid("p"), nome: inq, cpf: $("#m_inqcpf").value.trim(),
+      email: "—", tel: $("#m_inqtel").value || "—", canal: "Portal",
+      senha: SENHA, papelPrevisto: "inquilino"
+    };
+  } else {
+    pInq = (S.pessoas || []).find(p => p.id === $("#m_inqsel").value);
+    if (!pInq) { toast("Selecione um inquilino válido."); return; }
+  }
+
+  let propId = $("#m_prop").value;
+  let novoProp = null;
+  if (propId === "novo") {
+    const nomeProp = $("#m_propnovo").value.trim();
+    if (!nomeProp) { toast("Informe o nome do proprietário."); return; }
+    novoProp = {
+      id: uid("p"), nome: nomeProp, cpf: "—", email: "—", tel: "—",
+      canal: "Portal", papelPrevisto: "proprietario"
+    };
+    propId = novoProp.id;
+  } else if (!(S.pessoas || []).some(p => p.id === propId)) {
+    toast("Selecione um proprietário válido.");
+    return;
+  }
+
   const im = { id: uid("i"), apelido: ap, endereco: end || "Endereço não informado", tipo: "Imóvel" };
   S.imoveis.push(im);
-  let pInq;
-  if (novoInq) { pInq = { id: uid("p"), nome: inq, cpf: $("#m_inqcpf").value.trim(), email: "—", tel: $("#m_inqtel").value || "—", canal: "Portal", senha: SENHA, papelPrevisto: "inquilino" }; S.pessoas.push(pInq); }
-  else pInq = pessoa($("#m_inqsel").value);
-  let propId = $("#m_prop").value;
-  if (propId === "novo") {
-    const np = { id: uid("p"), nome: $("#m_propnovo").value.trim() || "Proprietário sem nome", cpf: "—", email: "—", tel: "—", canal: "Portal", papelPrevisto: "proprietario" };
-    S.pessoas.push(np); propId = np.id;
-  }
+  if (novoInq) S.pessoas.push(pInq);
+  if (novoProp) S.pessoas.push(novoProp);
   const regras = [{ desc: "Aluguel", tipo: "Aluguel", valor: aluguel, recebedor: "proprietario" }];
   if ($("#m_cond").checked) regras.push({ desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true });
   if (taxa) regras.push({ desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: taxa, recebedor: "imobiliaria" });
@@ -3883,6 +4071,14 @@ document.addEventListener("change", e => {
   save(); render();
 });
 document.addEventListener("input", e => {
+  if (e.target && e.target.id === "lg_user") {
+    S.ui.loginUser = e.target.value;
+    return;
+  }
+  if (e.target && e.target.id === "lg_pass") {
+    S.ui.loginPass = e.target.value;
+    return;
+  }
   const cfg = e.target.closest("[data-act='cfgInput']");
   if (cfg) { A[cfg.dataset.act](cfg); return; }
   const el = e.target.closest("[data-act='filtro']"); if (!el || el.tagName !== "INPUT") return;
