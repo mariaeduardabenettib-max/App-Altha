@@ -381,193 +381,62 @@ function iniciais(nome) { return nome.split(" ").filter(Boolean).slice(0, 2).map
 
 /* ============ dados de exemplo ============ */
 function seed() {
-  const pessoas = [
-    { demo: true, id: "p_camila", nome: "Camila Rocha Prado", cpf: "047.812.339-04", email: "camila.prado@email.com", tel: "(54) 99612-3388", canal: "Portal" },
-    { demo: true, id: "p_rafael", nome: "Rafael Tomazelli", cpf: "128.904.771-52", email: "rafael.tz@email.com", tel: "(54) 98844-1207", canal: "WhatsApp" },
-    { demo: true, id: "p_luana", nome: "Luana Ferreira Bastos", cpf: "093.556.210-73", email: "luana.bastos@email.com", tel: "(54) 99127-6690", canal: "WhatsApp e portal" },
-    { demo: true, id: "p_sergio", nome: "Sérgio Antunes Vieira", cpf: "312.007.459-20", email: "sergio.vieira@email.com", tel: "(54) 99801-4455", canal: "Portal" },
-    { demo: true, id: "p_marta", nome: "Marta Kniess Duarte", cpf: "755.331.802-66", email: "marta.kduarte@email.com", tel: "(54) 99310-7721", canal: "WhatsApp" }
-  ];
-  const imoveis = [
-    { demo: true, id: "i_302", apelido: "Ap. 302 — Ed. Belvedere", endereco: "Rua Garibaldi, 780 — Centro, Gramado/RS", tipo: "Apartamento" },
-    { demo: true, id: "i_casa2", apelido: "Casa 2 — Hortênsias", endereco: "Rua das Hortênsias, 88 — Planalto, Gramado/RS", tipo: "Casa" },
-    { demo: true, id: "i_sala9", apelido: "Sala 9 — Ed. Palladium", endereco: "Av. das Hortênsias, 512 — Centro, Gramado/RS", tipo: "Sala comercial" },
-    { demo: true, id: "i_loja4", apelido: "Loja 4 — Ed. Panorama", endereco: "Rua Coberta, 155 — Centro, Gramado/RS", tipo: "Loja" }
-  ];
-  const pixImob = "financeiro@althaimoveis.com.br";
-  const locacoes = [
-    {
-      demo: true, id: "l_302", imovelId: "i_302", inquilinoId: "p_camila", proprietarioId: "p_sergio",
-      inicio: "2024-03-01", fim: "2027-02-28", diaVenc: 10, multa: "2% + 1% ao mês", pixImob, pixProp: "sergio.vieira@email.com",
-      regras: [
-        { desc: "Aluguel", tipo: "Aluguel", valor: 2350, recebedor: "proprietario" },
-        { desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true },
-        { desc: "Água", tipo: "Água", valor: 92.4, recebedor: "proprietario" },
-        { desc: "Energia", tipo: "Luz", valor: 143.1, recebedor: "proprietario" },
-        { desc: "Lavanderia", tipo: "Lavanderia", valor: 60, recebedor: "imobiliaria" },
-        { desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: 235, recebedor: "imobiliaria" }
-      ]
+  // Estado inicial SEM base local. Clientes, imóveis, locações, cobranças e
+  // usuários são carregados exclusivamente do Google Sheets após o login.
+  return {
+    v: VERSAO,
+    competencia: compHoje(),
+    imobiliaria: {
+      nome: "Altha Imóveis",
+      cnpj: "",
+      resp: "",
+      email: "",
+      tel: "",
+      pix: "",
+      endereco: "",
+      complemento: "",
+      bairro: "",
+      cidade: "",
+      uf: "",
+      cep: ""
     },
-    {
-      demo: true, id: "l_casa2", imovelId: "i_casa2", inquilinoId: "p_rafael", proprietarioId: "p_marta",
-      recebimentoProp: { forma: "TED ou depósito", banco: "341 — Itaú", agencia: "1234", conta: "56789-0", tipoConta: "Corrente", titular: "Marta Kniess Duarte", docTitular: "755.331.802-66" },
-      inicio: "2025-08-01", fim: "2027-07-31", diaVenc: 20, multa: "2% + 1% ao mês", pixImob, pixProp: "755.331.802-66",
-      regras: [
-        { desc: "Aluguel", tipo: "Aluguel", valor: 3100, recebedor: "proprietario" },
-        { desc: "IPTU (parcela)", tipo: "IPTU", valor: 210, recebedor: "proprietario" },
-        { desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: 310, recebedor: "imobiliaria" }
-      ]
-    },
-    {
-      demo: true, id: "l_loja4", imovelId: "i_loja4", inquilinoId: "p_rafael", proprietarioId: "p_sergio",
-      inicio: "2026-02-01", fim: "2029-01-31", diaVenc: 10, multa: "2% + 1% ao mês", pixImob, pixProp: "sergio.vieira@email.com",
-      regras: [
-        { desc: "Aluguel", tipo: "Aluguel", valor: 2680, recebedor: "proprietario" },
-        { desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true },
-        { desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: 268, recebedor: "imobiliaria" }
-      ]
-    },
-    {
-      demo: true, id: "l_sala9", imovelId: "i_sala9", inquilinoId: "p_luana", proprietarioId: "p_sergio",
-      inicio: "2023-11-01", fim: "2026-10-31", diaVenc: 5, multa: "2% + 1% ao mês", pixImob, pixProp: "sergio.vieira@email.com",
-      regras: [
-        { desc: "Aluguel", tipo: "Aluguel", valor: 1800, recebedor: "proprietario" },
-        { desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true },
-        { desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: 180, recebedor: "imobiliaria" }
-      ]
-    }
-  ];
-
-  const s = {
-    v: VERSAO, competencia: "2026-08",
-    imobiliaria: { nome: "Altha Imóveis", cnpj: "56.425.998/0001-20", resp: "Maria Eduarda Benetti Barbosa", email: "contato@althaimoveisrs.com.br", tel: "(54) 99469-1771", pix: pixImob,
-      endereco: "Avenida das Hortênsias, 2040 — Sala 10-A", complemento: "Centro Comercial e Residencial Avenida das Hortênsias",
-      bairro: "Centro", cidade: "Gramado", uf: "RS", cep: "95670-000" },
     config: {
       nomeImobiliaria: "Altha",
       tipos: {
-        Comprovantes: { rotulo: "Comprovantes", pasta: "{locacao}/Comprovantes/{recebedor}", nome: "{mes}.{ano2}" },
-        Boletos: { rotulo: "Contas e boletos", pasta: "{locacao}/Documentos", nome: "boleto {mes}.{ano2}" },
-        Recibos: { rotulo: "Recibos", pasta: "{locacao}/Documentos", nome: "recibo {mes}.{ano2}" },
-        Contratos: { rotulo: "Contratos e aditivos", pasta: "{locacao}/Documentos", nome: "contrato {inquilino}" },
-        Documentos: { rotulo: "Outros documentos", pasta: "{locacao}/Documentos", nome: "{tipo} {mes}.{ano2}" }
+        Comprovantes: { rotulo: "Comprovantes", nome: "{mes}.{ano2}" },
+        Boletos: { rotulo: "Contas e boletos", nome: "boleto {mes}.{ano2}" },
+        Recibos: { rotulo: "Recibos", nome: "recibo {mes}.{ano2}" },
+        Contratos: { rotulo: "Contratos e aditivos", nome: "contrato {inquilino}" },
+        Documentos: { rotulo: "Outros documentos", nome: "{tipo} {mes}.{ano2}" }
       }
     },
-    usuarios: [{ id: "u_maria", nome: "Maria Eduarda Benetti Barbosa", email: "contato@althaimoveisrs.com.br", senha: "altha2026", perfil: "imobiliaria", cargo: "Responsável", ativo: true, perms: { locacoes: true, financeiro: true, mensagens: true, relatorios: true, verComo: true, senhas: true, piloto: true, usuarios: true, config: true } }],
-    pessoas, imoveis, locacoes,
-    cobrancas: [], pagamentos: [], comprovantes: [], documentos: [], historico: [],
-    boletosPendentes: [], mensagens: [], atendimentos: [], recibos: [],
-    criterios: {}, ui: { perfil: null, pessoaId: null, view: "login", locacaoId: null, cobrancaId: null, tab: "resumo", filtro: {} }
+    usuarios: [],
+    pessoas: [],
+    imoveis: [],
+    locacoes: [],
+    cobrancas: [],
+    pagamentos: [],
+    comprovantes: [],
+    documentos: [],
+    historico: [],
+    boletosPendentes: [],
+    mensagens: [],
+    atendimentos: [],
+    recibos: [],
+    criterios: {},
+    ui: {
+      perfil: null,
+      pessoaId: null,
+      usuarioId: null,
+      view: "login",
+      locacaoId: null,
+      cobrancaId: null,
+      tab: "resumo",
+      filtro: {},
+      loginUser: "",
+      loginPass: ""
+    }
   };
-
-  // cobranças de setembro
-  const mk = (loc, extras) => {
-    const c = {
-      id: "c_" + loc.id + "_2026-08", locacaoId: loc.id, competencia: "2026-08",
-      vencimento: `2026-09-${String(loc.diaVenc).padStart(2, "0")}`, criadaEm: "2026-09-01T08:12:00", cancelada: false, // competência 08/2026 cobrada em setembro
-      itens: loc.regras.filter(r => !r.boleto).map(r => ({ id: uid("it"), desc: r.desc, tipo: r.tipo, valor: r.valor, recebedor: r.recebedor }))
-    };
-    extras(c);
-    return c;
-  };
-  const c1 = mk(locacoes[0], c => {
-    c.itens.splice(1, 0, { id: "it_cond302", desc: "Condomínio", tipo: "Condomínio", valor: 486.2, recebedor: "proprietario", boletoId: "bol_302" });
-  });
-  const c2 = mk(locacoes[1], () => { });
-  const cL = mk(locacoes[2], c => {
-    c.itens.splice(1, 0, { id: "it_condloja", desc: "Condomínio", tipo: "Condomínio", valor: 315.4, recebedor: "proprietario", boletoId: "bol_loja4" });
-  });
-  const c3 = mk(locacoes[3], c => {
-    c.itens.splice(1, 0, { id: "it_cond9", desc: "Condomínio", tipo: "Condomínio", valor: 640, recebedor: "proprietario", boletoId: "bol_sala9" });
-  });
-  s.cobrancas = [c1, c2, cL, c3];
-
-  // boletos de condomínio já aprovados
-  s.documentos.push(
-    { id: "bol_302", tipo: "Conta", conta: "Condomínio", nome: "boleto 08.26.pdf", locacaoId: "l_302", cobrancaId: c1.id, competencia: "2026-08", valor: 486.2, vencimento: "2026-09-10", origem: PORTAL, criadoEm: "2026-08-29T17:40:00", criadoPor: "Sérgio Antunes Vieira", visivelInquilino: true, linhaDigitavel: "34191.79001 01043.510047 91020.150008 8 10460000048620", tamanho: 84300 },
-    { id: "bol_loja4", tipo: "Conta", conta: "Condomínio", nome: "boleto 08.26.pdf", locacaoId: "l_loja4", cobrancaId: cL.id, competencia: "2026-08", valor: 315.4, vencimento: "2026-09-10", origem: PORTAL, criadoEm: "2026-08-27T09:12:00", criadoPor: "Sérgio Antunes Vieira", visivelInquilino: true, linhaDigitavel: "34191.79001 01043.510047 91020.150008 8 10460000031540", tamanho: 80500 },
-    { id: "doc_contrloja4", tipo: "Contrato", nome: "contrato Rafael Tomazelli.pdf", locacaoId: "l_loja4", competencia: null, origem: PORTAL, criadoEm: "2026-01-28T14:20:00", criadoPor: "Maria Eduarda (Altha Imóveis)", visivelInquilino: true, tamanho: 395000 },
-    { id: "bol_sala9", tipo: "Conta", conta: "Condomínio", nome: "boleto 08.26.pdf", locacaoId: "l_sala9", cobrancaId: c3.id, competencia: "2026-08", valor: 640, vencimento: "2026-09-05", origem: EXTERNA, criadoEm: "2026-08-28T10:05:00", criadoPor: "Maria Eduarda (Altha Imóveis)", visivelInquilino: true, linhaDigitavel: "34191.79001 01043.510047 91020.150008 8 10460000064000", tamanho: 79120 },
-    { id: "doc_contr302", tipo: "Contrato", nome: "contrato Camila Rocha Prado.pdf", locacaoId: "l_302", competencia: null, origem: PORTAL, criadoEm: "2024-02-26T15:00:00", criadoPor: "Maria Eduarda (Altha Imóveis)", visivelInquilino: true, tamanho: 412000 },
-    { id: "doc_contrcasa2", tipo: "Contrato", nome: "contrato Rafael Tomazelli.pdf", locacaoId: "l_casa2", competencia: null, origem: PORTAL, criadoEm: "2025-07-28T11:30:00", criadoPor: "Maria Eduarda (Altha Imóveis)", visivelInquilino: true, tamanho: 388000 },
-    { id: "doc_contrsala9", tipo: "Contrato", nome: "contrato Luana Ferreira Bastos.pdf", locacaoId: "l_sala9", competencia: null, origem: PORTAL, criadoEm: "2023-10-20T09:15:00", criadoPor: "Maria Eduarda (Altha Imóveis)", visivelInquilino: true, tamanho: 401000 }
-  );
-
-  // histórico + pagamento parcial já registrado na locação 1
-  s.comprovantes.push({
-    id: "cp_1", cobrancaId: c1.id, locacaoId: "l_302", competencia: "2026-08", recebedor: "proprietario",
-    nome: "08.26.jpg", tamanho: 214000, mime: "image/jpeg", dataUrl: null,
-    origem: PORTAL, enviadoPor: "Camila Rocha Prado", enviadoEm: "2026-09-09T20:14:00", status: "aprovado", valorInformado: 3071.7
-  });
-  s.pagamentos.push({
-    id: "pg_1", cobrancaId: c1.id, locacaoId: "l_302", competencia: "2026-08", recebedor: "proprietario",
-    valor: 3071.7, data: "2026-09-09", forma: "PIX", chavePix: "sergio.vieira@email.com", origem: PORTAL, comprovanteId: "cp_1",
-    registradoPor: "Maria Eduarda (Altha Imóveis)", registradoEm: "2026-09-10T09:02:00", obs: "Aluguel + condomínio + água + luz"
-  });
-
-  s.comprovantes.push({
-    id: "cp_loja", cobrancaId: cL.id, locacaoId: "l_loja4", competencia: "2026-08", recebedor: "proprietario",
-    nome: "08.26.pdf", tamanho: 168000, mime: "application/pdf", dataUrl: null,
-    origem: EXTERNA, enviadoPor: "Rafael Tomazelli", enviadoEm: "2026-09-08T11:32:00", status: "aprovado", valorInformado: 2995.4
-  });
-  s.pagamentos.push(
-    { id: "pg_loja1", cobrancaId: cL.id, locacaoId: "l_loja4", competencia: "2026-08", recebedor: "proprietario", valor: 2995.4, data: "2026-09-08", forma: "PIX", chavePix: "sergio.vieira@email.com", origem: EXTERNA, comprovanteId: "cp_loja", registradoPor: "Maria Eduarda (Altha Imóveis)", registradoEm: "2026-09-08T14:05:00", obs: "Aluguel + condomínio" },
-    { id: "pg_loja2", cobrancaId: cL.id, locacaoId: "l_loja4", competencia: "2026-08", recebedor: "imobiliaria", valor: 268, data: "2026-09-08", forma: "PIX", chavePix: pixImob, origem: EXTERNA, comprovanteId: null, registradoPor: "Maria Eduarda (Altha Imóveis)", registradoEm: "2026-09-08T14:07:00", obs: "Taxa administrativa" }
-  );
-  s.recibos.push({
-    id: "rc_loja", numero: "0005/2026", cobrancaId: cL.id, locacaoId: "l_loja4", competencia: "2026-08",
-    valor: 3263.4, em: "2026-09-08", emitidoPor: "Maria Eduarda (Altha Imóveis)", versao: 1,
-    nome: "recibo 08.26.pdf"
-  });
-
-  // julho de 2026: competência fechada e quitada, cobrada em agosto
-  const condJulho = { l_302: 472.9, l_sala9: 640, l_loja4: 308.7 };
-  locacoes.forEach((loc, idx) => {
-    const cJul = {
-      id: "c_" + loc.id + "_2026-07", locacaoId: loc.id, competencia: "2026-07",
-      vencimento: `2026-08-${String(loc.diaVenc).padStart(2, "0")}`, criadaEm: "2026-08-01T08:10:00", cancelada: false,
-      itens: loc.regras.filter(r => !r.boleto).map(r => ({ id: uid("it"), desc: r.desc, tipo: r.tipo, valor: r.valor, recebedor: r.recebedor, variavel: !!r.variavel }))
-    };
-    if (condJulho[loc.id]) cJul.itens.splice(1, 0, { id: uid("it"), desc: "Condomínio", tipo: "Condomínio", valor: condJulho[loc.id], recebedor: "proprietario" });
-    s.cobrancas.push(cJul);
-    const somaDe = rec => cJul.itens.filter(i => i.recebedor === rec).reduce((a, i) => a + i.valor, 0);
-    const dataPg = `2026-08-${String(Math.max(2, loc.diaVenc - 2)).padStart(2, "0")}`;
-    s.pagamentos.push(
-      { id: uid("pg"), cobrancaId: cJul.id, locacaoId: loc.id, competencia: "2026-07", recebedor: "proprietario", valor: somaDe("proprietario"), data: dataPg, forma: "PIX", chavePix: loc.pixProp, origem: PORTAL, comprovanteId: null, registradoPor: "Maria Eduarda (Altha Imóveis)", registradoEm: dataPg + "T10:00:00", obs: "Fechamento de julho" },
-      { id: uid("pg"), cobrancaId: cJul.id, locacaoId: loc.id, competencia: "2026-07", recebedor: "imobiliaria", valor: somaDe("imobiliaria"), data: dataPg, forma: idx === 1 ? "TED" : "PIX", dadosRepasse: idx === 1 ? "Banco 341 · ag 0123 · cc 45678-9" : "", chavePix: idx === 1 ? "" : loc.pixImob, origem: PORTAL, comprovanteId: null, registradoPor: "Maria Eduarda (Altha Imóveis)", registradoEm: dataPg + "T10:02:00", obs: "Fechamento de julho" }
-    );
-    s.recibos.push({
-      id: uid("rc"), numero: String(idx + 1).padStart(4, "0") + "/2026", cobrancaId: cJul.id, locacaoId: loc.id,
-      competencia: "2026-07", valor: somaDe("proprietario") + somaDe("imobiliaria"), em: dataPg,
-      emitidoPor: "Maria Eduarda (Altha Imóveis)", versao: 1, nome: "recibo 07.26.pdf"
-    });
-
-  });
-
-  const D = (loc, comp, quando, acao, origem, quem) => s.historico.push({ id: uid("h"), locacaoId: loc, competencia: comp, quando, acao, origem, quem });
-  ["l_302", "l_casa2", "l_loja4", "l_sala9"].forEach(id => {
-    D(id, "2026-07", "2026-08-01T08:10:00", "Fechamento de 07/2026 criado e cobrança disponibilizada.", "Sistema", "Maria Eduarda (Altha Imóveis)");
-    D(id, "2026-07", "2026-08-10T10:02:00", "Cobrança de 07/2026 quitada nos dois recebedores e recibo emitido.", "Painel da imobiliária", "Maria Eduarda (Altha Imóveis)");
-  });
-  D("l_302", "2026-08", "2026-08-29T17:40:00", "Boleto de condomínio enviado pelo proprietário e aguardando aprovação.", PORTAL, "Sérgio Antunes Vieira");
-  D("l_302", "2026-08", "2026-08-30T09:05:00", "Boleto de condomínio aprovado e vinculado à cobrança de 08/2026.", "Painel da imobiliária", "Maria Eduarda (Altha Imóveis)");
-  D("l_302", "2026-08", "2026-09-01T08:12:00", "Fechamento de 08/2026 criado e cobrança disponibilizada.", "Sistema", "Maria Eduarda (Altha Imóveis)");
-  D("l_302", "2026-08", "2026-09-09T20:14:00", "Comprovante recebido para o pagamento do proprietário.", PORTAL, "Camila Rocha Prado");
-  D("l_302", "2026-08", "2026-09-10T09:02:00", "Comprovante validado e pagamento de R$ 3.071,70 registrado.", "Painel da imobiliária", "Maria Eduarda (Altha Imóveis)");
-  D("l_casa2", "2026-08", "2026-09-01T08:12:00", "Fechamento de 08/2026 criado e cobrança enviada por WhatsApp.", EXTERNA, "Maria Eduarda (Altha Imóveis)");
-  D("l_loja4", "2026-08", "2026-08-27T09:12:00", "Boleto de condomínio recebido do proprietário e vinculado à cobrança.", PORTAL, "Sérgio Antunes Vieira");
-  D("l_loja4", "2026-08", "2026-09-01T08:12:00", "Fechamento de 08/2026 criado e cobrança enviada por WhatsApp.", EXTERNA, "Maria Eduarda (Altha Imóveis)");
-  D("l_loja4", "2026-08", "2026-09-08T14:07:00", "Cobrança quitada nos dois recebedores. Recibo 0001/2026 de R$ 3.263,40 emitido automaticamente.", EXTERNA, "Maria Eduarda (Altha Imóveis)");
-  D("l_sala9", "2026-08", "2026-08-28T10:05:00", "Boleto de condomínio recebido por WhatsApp e cadastrado na cobrança.", EXTERNA, "Maria Eduarda (Altha Imóveis)");
-  D("l_sala9", "2026-08", "2026-09-01T08:12:00", "Fechamento de 08/2026 criado e cobrança disponibilizada.", "Sistema", "Maria Eduarda (Altha Imóveis)");
-  D("l_sala9", "2026-08", "2026-09-12T14:20:00", "Atendimento registrado: inquilina informou atraso e pagamento previsto para 19/09.", EXTERNA, "Maria Eduarda (Altha Imóveis)");
-
-  s.atendimentos.push({ id: uid("at"), locacaoId: "l_sala9", data: "2026-09-12", canal: EXTERNA, assunto: "Financeiro", obs: "Inquilina informou atraso; pagamento previsto para 19/09.", por: "Maria Eduarda (Altha Imóveis)" });
-
-  // Drive já alimentado
-
-
-  return s;
 }
 
 function slug(s) {
@@ -696,18 +565,46 @@ function aplicaEstadoRemoto(d) {
   ultimaSync = Date.now();
   render();
 }
+let ULTIMO_SAVE_RESULTADO = null;
 async function gravaCompartilhado(forcar) {
-  if (gravando) { gravarDeNovo = true; return; }
+  if (gravando) {
+    if (!forcar) { gravarDeNovo = true; return false; }
+    // Um salvamento anterior ainda está terminando. Aguarda para não dar
+    // "sucesso" antes de a nova locação realmente chegar ao Sheets.
+    for (let i = 0; i < 80 && gravando; i++) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (gravando) throw new Error("O banco ainda está finalizando outra gravação. Tente novamente em alguns segundos.");
+  }
+
   gravando = true;
   const marca_ = rev;
+  let erro = null;
   try {
-    await apiPost({ action:"save", state:estadoParaCompartilhar() });
-    revGravada = marca_; ultimaSync = Date.now(); MODO = "sheets";
+    ULTIMO_SAVE_RESULTADO = await apiPost({ action:"save", state:estadoParaCompartilhar(), portalUrl: location.origin });
+    revGravada = marca_;
+    ultimaSync = Date.now();
+    MODO = "sheets";
+    if (!forcar && S.ui.perfil) {
+      setTimeout(() => {
+        if (!temMudancaLocal()) puxarAgora();
+      }, 0);
+    }
   } catch (e) {
     MODO = "leitura";
+    erro = e;
+  } finally {
+    gravando = false;
+    pintaSelo();
   }
-  gravando = false; pintaSelo();
-  if (gravarDeNovo) { gravarDeNovo = false; gravaCompartilhado(); }
+
+  if (gravarDeNovo && !forcar) {
+    gravarDeNovo = false;
+    gravaCompartilhado(false);
+  }
+
+  if (erro && forcar) throw erro;
+  return erro ? false : (ULTIMO_SAVE_RESULTADO || true);
 }
 function agendaGravacao() {
   rev++;
@@ -716,58 +613,74 @@ function agendaGravacao() {
 }
 const temMudancaLocal = () => rev !== revGravada || gravando;
 async function iniciarSync() {
+  // Não baixa a base inteira antes do login. Isso deixa a entrada mais rápida
+  // e evita que uma atualização do Sheets apague o e-mail enquanto a pessoa digita.
   MODO = "sheets";
+
+  // Busca somente os dados públicos/configuração da Altha. Nenhuma pessoa,
+  // locação ou cobrança é carregada antes da autenticação.
   try {
-    const resp = await apiGet("load");
-    const remoto = resp.state || {};
-    const vazio = !(remoto.pessoas || []).length && !(remoto.locacoes || []).length && !(remoto.usuarios || []).length;
-    if (vazio) {
-      const ui = S && S.ui ? S.ui : null;
-      S = seed(); if (ui) S.ui = ui;
-      await apiPost({ action:"save", state:estadoParaCompartilhar() });
-      ultimaSync = Date.now(); revGravada = rev;
-      render();
-    } else {
-      aplicaEstadoRemoto(remoto);
+    const pub = await apiGet("publicconfig");
+    if (pub && pub.imobiliaria) {
+      S.imobiliaria = Object.assign({}, S.imobiliaria, pub.imobiliaria);
     }
-    MODO = "sheets";
-  } catch (e) {
-    MODO = "leitura";
-    render();
-  }
+  } catch (_) {}
+
   clearInterval(timerSelo);
   timerSelo = setInterval(pintaSelo, 10000);
-  setInterval(() => { if (!temMudancaLocal() && document.visibilityState === "visible") puxarAgora(); }, 20000);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") puxarAgora(); });
-  window.addEventListener("focus", puxarAgora);
+
+  setInterval(() => {
+    if (S.ui.perfil && !temMudancaLocal() && document.visibilityState === "visible") puxarAgora();
+  }, 20000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (S.ui.perfil && document.visibilityState === "visible") puxarAgora();
+  });
+  window.addEventListener("focus", () => {
+    if (S.ui.perfil) puxarAgora();
+  });
 }
 async function puxarAgora() {
-  if (temMudancaLocal()) return;
-  try { const r = await apiGet("load"); aplicaEstadoRemoto(r.state); MODO="sheets"; }
-  catch (_) { MODO="leitura"; pintaSelo(); }
+  if (!S.ui.perfil || temMudancaLocal()) return false;
+  try {
+    const r = await apiGet("load");
+    aplicaEstadoRemoto(r.state);
+    MODO = "sheets";
+    return true;
+  } catch (_) {
+    MODO = "leitura";
+    pintaSelo();
+    return false;
+  }
 }
 function load() {
-  // O banco operacional é o Google Sheets. O navegador guarda apenas a interface local.
+  // Não existe base persistente no navegador.
   return seed();
 }
 function save() {
-  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
   agendaGravacao();
 }
 async function saveAgora() {
-  try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
   rev++;
   clearTimeout(timerGravar);
-  await gravaCompartilhado(true);
+  const resultadoSave = await gravaCompartilhado(true);
   if (MODO !== "sheets") throw new Error("O Google Sheets não confirmou a gravação.");
-  return true;
+
+  // Depois de gravar, recarrega do Sheets. Assim o estado exibido volta a ser
+  // exatamente o que foi persistido no banco.
+  const r = await apiGet("load");
+  aplicaEstadoRemoto(r.state);
+  return resultadoSave || {};
 }
-function reset() {
-  const ui = S.ui;
-  S = seed(); S.ui = ui;
-  try { localStorage.removeItem(KEY); } catch (_) {}
-  save();
-  go("login");
+async function reset() {
+  // "Reset" agora significa descartar o estado em memória e buscar novamente
+  // o que realmente existe no Sheets. Nunca recria dados de exemplo no HTML.
+  if (!S.ui.perfil) {
+    S = seed();
+    render();
+    return;
+  }
+  await puxarAgora();
 }
 
 
@@ -951,7 +864,7 @@ const logoInline = () => `<div class="brandmark">${LOGO_MARK}<span class="logo-w
 const logoStack = () => `<div class="logo-stack">${LOGO_MARK}<b>Altha</b><i>Imóveis</i></div>`;
 
 /* ============ navegação e chrome ============ */
-function go(view, opts) { Object.assign(S.ui, { view }, opts || {}); save(); render(); window.scrollTo({ top: 0 }); }
+function go(view, opts) { Object.assign(S.ui, { view }, opts || {}); render(); window.scrollTo({ top: 0 }); }
 function toast(msg, ok) {
   const box = document.getElementById("toasts");
   const el = document.createElement("div");
@@ -999,7 +912,15 @@ function topbar() {
 /* ============ login ============ */
 function contas() {
   const c = (S.usuarios || []).filter(u => u.ativo !== false).map(u => ({
-    id: u.id, login: u.email, cpf: u.cpf || "", nome: u.nome, senha: u.senha, perfil: "imobiliaria", pessoaId: null, papel: "Painel da imobiliária", cargo: u.cargo || ""
+    id: u.id,
+    login: u.email,
+    cpf: u.cpf || "",
+    nome: u.nome,
+    senha: u.senha,
+    perfil: u.perfil || (u.pessoaId ? "inquilino" : "imobiliaria"),
+    pessoaId: u.pessoaId || null,
+    papel: u.perfil === "proprietario" ? "Portal do proprietário" : u.perfil === "inquilino" ? "Portal do inquilino" : "Painel da imobiliária",
+    cargo: u.cargo || ""
   }));
   S.locacoes.forEach(l => {
     const i = pessoa(l.inquilinoId), o = pessoa(l.proprietarioId);
@@ -1023,6 +944,19 @@ const cpfLivre = (cpf, ignorarId) => {
   return !emPessoas && !emUsuarios;
 };
 const soDigitos = s => String(s).replace(/\D/g, "");
+const emailNorm = v => String(v || "").trim().toLowerCase();
+const emailValido = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm(v));
+function emailLivre(email, ignorarPessoaId) {
+  const e = emailNorm(email);
+  if (!e) return false;
+  const pessoaEmUso = (S.pessoas || []).some(p =>
+    p.id !== ignorarPessoaId && emailNorm(p.email) === e
+  );
+  const usuarioEmUso = (S.usuarios || []).some(u =>
+    u.pessoaId !== ignorarPessoaId && emailNorm(u.email) === e
+  );
+  return !pessoaEmUso && !usuarioEmUso;
+}
 
 function viewTrocarSenha() {
   const conta = contas().find(c => c.id === (S.ui.usuarioId || S.ui.pessoaId));
@@ -1056,11 +990,6 @@ function viewLogin() {
       <div style="text-align:center;margin-top:14px">
         <button class="linkbtn" data-act="ajudaAcesso">Preciso de ajuda para entrar</button>
       </div>
-    </div>
-    <div class="card pad stack" style="margin-top:14px;gap:10px">
-      <h3>É do time e vai testar?</h3>
-      <p class="small muted" style="margin:0">Crie o seu acesso individual como locatário ou locador. Você recebe um imóvel de teste só seu, com cobrança, boleto e documentos, e enxerga apenas o que é seu.</p>
-      <button class="btn block" data-act="criarAcesso">Criar meu acesso de teste</button>
     </div>
     <p class="tiny muted" style="text-align:center;margin-top:16px">O painel da imobiliária é restrito à equipe da Altha, com acesso liberado pela administração.</p>
   </div></div>`;
@@ -2228,68 +2157,8 @@ A.abrirArquivoTecnico = async el => {
   }
 };
 
-A.criarAcesso = () => {
-  modal("Criar meu acesso de teste", `
-    <p class="small muted">Este cadastro é para o time avaliar o portal pelo lado do cliente. Cada pessoa recebe um imóvel de teste próprio e vê somente as informações dele.</p>
-    <div class="field"><label for="m_tipo">Vou testar como</label><select id="m_tipo">
-      <option value="inquilino">Locatário — quem aluga e paga</option>
-      <option value="proprietario">Locador — dono do imóvel</option></select></div>
-    <div class="field"><label for="m_nome">Seu nome</label><input id="m_nome" placeholder="Nome completo"></div>
-    <div class="field"><label for="m_cpf">Seu CPF</label><input id="m_cpf" placeholder="000.000.000-00"></div>
-    <div class="field"><label for="m_email">Seu e-mail</label><input id="m_email" placeholder="nome@althaimoveisrs.com.br"></div>
-    <div class="field"><label for="m_senha">Crie uma senha</label><input id="m_senha" type="password" placeholder="Mínimo de 6 caracteres"></div>`,
-    `<button class="btn primary block" data-act="criarAcessoOK">Criar acesso e entrar</button>`);
-};
-A.criarAcessoOK = () => {
-  const tipo = $("#m_tipo").value, nome = $("#m_nome").value.trim();
-  const email = $("#m_email").value.trim().toLowerCase(), senha = $("#m_senha").value, cpfN = $("#m_cpf").value.trim();
-  if (!nome || !email) { toast("Informe nome e e-mail."); return; }
-  if (soDigitos(cpfN).length !== 11) { toast("Informe um CPF com 11 dígitos."); return; }
-  if (!cpfLivre(cpfN)) { toast("Esse CPF já tem acesso. Use Entrar."); return; }
-  if (senha.length < 6) { toast("A senha precisa de ao menos 6 caracteres."); return; }
-  if (contas().some(c => (c.login || "").toLowerCase() === email)) { toast("Esse e-mail já tem acesso. Use Entrar."); return; }
-  const primeiro = nome.split(" ")[0];
-  const eu = { demo:true, id: uid("p"), nome, cpf: cpfN, email, tel: "—", canal: "Portal", senha, senhaProvisoria: false, papelPrevisto: tipo, origemCadastro: "cadastro próprio", criadoEm: agora() };
-  S.pessoas.push(eu);
-  const par = { demo:true, id: uid("p"), nome: tipo === "inquilino" ? "Proprietário do teste de " + primeiro : "Inquilino do teste de " + primeiro,
-    cpf: "—", email: "—", tel: "—", canal: "WhatsApp", ativo: false };
-  S.pessoas.push(par);
-  const im = { demo:true, id: uid("i"), apelido: "Ap. 20 — Ed. Aurora (teste de " + primeiro + ")", endereco: "Av. das Hortênsias, 300 — Centro, Gramado/RS", tipo: "Apartamento" };
-  S.imoveis.push(im);
-  const l = {
-    demo:true, id: uid("l"), imovelId: im.id,
-    inquilinoId: tipo === "inquilino" ? eu.id : par.id, proprietarioId: tipo === "inquilino" ? par.id : eu.id,
-    inicio: hojeISO(), fim: "", diaVenc: Math.min(28, HOJE.getDate() + 5), multa: "2% + 1% ao mês", pixImob: S.imobiliaria.pix, pixProp: "teste@althaimoveisrs.com.br",
-    regras: [
-      { desc: "Aluguel", tipo: "Aluguel", valor: 2400, recebedor: "proprietario" },
-      { desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true },
-      { desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: 240, recebedor: "imobiliaria" }
-    ]
-  };
-  S.locacoes.push(l);
-  const c = achaOuCriaCobranca(l.id, S.competencia);
-  const bol = {
-    id: uid("bol"), tipo: "Conta", conta: "Condomínio", nome: nomeArquivo("Boletos", { locacaoId: l.id, competencia: c.competencia, ext: "pdf" }),
-    locacaoId: l.id, cobrancaId: c.id, competencia: c.competencia, valor: 418.5, vencimento: c.vencimento,
-    origem: "Sistema", criadoEm: agora(), criadoPor: "Sistema", visivelInquilino: true,
-    linhaDigitavel: "34191.79001 01043.510047 91020.150008 8 10460000041850"
-  };
-  S.documentos.push(bol);
-  const ex = c.itens.find(i => i.tipo === "Condomínio");
-  if (ex) { ex.valor = bol.valor; ex.boletoId = bol.id; } else c.itens.push({ id: uid("it"), desc: "Condomínio", tipo: "Condomínio", valor: bol.valor, recebedor: "proprietario", boletoId: bol.id });
-
-  S.documentos.push({ id: uid("doc"), tipo: "Contrato", nome: nomeArquivo("Contratos", { locacaoId: l.id, ext: "pdf" }), locacaoId: l.id, competencia: null, origem: "Sistema", criadoEm: agora(), criadoPor: "Sistema", visivelInquilino: true });
-  S.ui.perfil = tipo; S.ui.pessoaId = eu.id; S.ui.usuarioId = null; S.ui.loginErro = null; S.ui.loginPass = "";
-  marca("usuarios"); marca("permissao");
-  S.historico.push({ id: uid("h"), locacaoId: l.id, competencia: S.competencia, quando: agora(),
-    acao: `Acesso de teste criado por ${nome} como ${tipo === "inquilino" ? "locatário" : "locador"}, com imóvel de teste próprio.`,
-    origem: "Portal", quem: nome, tester: (EU && EU.nome) || null });
-  fecharModal(); save();
-  go(tipo === "inquilino" ? "inq.home" : "prop.home");
-  toast("Acesso criado. Bem-vindo, " + primeiro + ".", true);
-};
-A.irForm = () => { S.ui.loginModo = "form"; S.ui.loginErro = null; save(); render(); };
-A.irPerfis = () => { guardaLogin(); S.ui.loginModo = "perfis"; S.ui.loginErro = null; save(); render(); };
+A.irForm = () => { S.ui.loginModo = "form"; S.ui.loginErro = null; render(); };
+A.irPerfis = () => { guardaLogin(); S.ui.loginModo = "perfis"; S.ui.loginErro = null; render(); };
 A.entrar = el => { if (el.dataset.perfil === "imobiliaria") { toast("O painel é restrito à equipe da Altha."); return; }
   const perfil = el.dataset.perfil;
   S.ui.perfil = perfil; S.ui.pessoaId = el.dataset.pessoa || null;
@@ -2309,29 +2178,60 @@ function guardaLogin() {
 }
 A.login = async () => {
   guardaLogin();
-  const u = (S.ui.loginUser || "").trim(), senha = S.ui.loginPass || "";
+  const u = (S.ui.loginUser || "").trim();
+  const senha = S.ui.loginPass || "";
+
   if (!u) { S.ui.loginErro = "Informe seu CPF ou e-mail."; render(); return; }
   if (!senha) { S.ui.loginErro = "Informe sua senha."; render(); return; }
-  S.ui.loginErro = null; render();
+
+  S.ui.loginErro = null;
+  render();
+
   try {
     const r = await apiPost({ action:"login", login:u, password:senha });
-    const conta = r.account;
-    S.ui.loginPass = ""; S.ui.verSenha = false;
-    S.ui.perfil = conta.perfil; S.ui.pessoaId = conta.pessoaId || null; S.ui.usuarioId = conta.pessoaId ? null : conta.id;
-    if (!conta.pessoaId) {
-      const uu = (S.usuarios || []).find(x => x.id === conta.id);
-      if (uu) { uu.perms = conta.perms || uu.perms; uu.senhaProvisoria = !!conta.senhaProvisoria; }
-    } else {
-      const pp = pessoa(conta.pessoaId); pp.usuarioId = conta.id; pp.senhaProvisoria = !!conta.senhaProvisoria;
-    }
+    const conta = r && r.account;
+    if (!conta || !conta.perfil) throw new Error("O acesso foi validado, mas o usuário não retornou corretamente.");
+
+    // Mantém somente a identificação da sessão em memória.
+    S.ui.perfil = conta.perfil;
+    S.ui.pessoaId = conta.pessoaId || null;
+    S.ui.usuarioId = conta.pessoaId ? null : conta.id;
+    S.ui.loginUser = u;
+    S.ui.loginPass = "";
+    S.ui.verSenha = false;
     S.ui.trocarSenha = !!conta.senhaProvisoria;
     S.ui.trocaErro = null;
-    marca("login"); if (conta.perfil !== "imobiliaria") marca("permissao");
-    try { localStorage.setItem(KEY + "_ui", JSON.stringify({ ui:S.ui })); } catch (_) {}
+
+    // Nenhuma base do HTML/cache é usada: o conteúdo entra somente daqui.
+    const remoto = await apiGet("load");
+    aplicaEstadoRemoto(remoto.state);
+
+    if (conta.pessoaId) {
+      const pp = (S.pessoas || []).find(x => x.id === conta.pessoaId);
+      if (!pp) throw new Error("Seu usuário existe, mas o cadastro da pessoa não foi encontrado na planilha.");
+      pp.usuarioId = conta.id;
+      pp.senhaProvisoria = !!conta.senhaProvisoria;
+    } else {
+      const uu = (S.usuarios || []).find(x => x.id === conta.id);
+      if (uu) {
+        uu.perms = conta.perms || uu.perms;
+        uu.senhaProvisoria = !!conta.senhaProvisoria;
+      }
+    }
+
+    S.ui.trocarSenha = !!conta.senhaProvisoria;
     go(conta.perfil === "imobiliaria" ? "adm.dashboard" : conta.perfil === "inquilino" ? "inq.home" : "prop.home");
-    if (!S.ui.trocarSenha) toast("Bem-vindo, " + conta.nome.split(" ")[0] + ".", true);
+
+    if (!S.ui.trocarSenha) {
+      toast("Bem-vindo, " + String(conta.nome || "usuário").split(" ")[0] + ".", true);
+    }
   } catch (e) {
-    S.ui.loginErro = e.message || "Não foi possível entrar."; render();
+    // Se falhar ao autenticar ou carregar o Sheets, não mostra uma base antiga.
+    S = seed();
+    S.ui.loginUser = u;
+    S.ui.loginErro = e.message || "Não foi possível entrar.";
+    MODO = "leitura";
+    render();
   }
 };
 A.trocarSenhaOK = async () => {
@@ -2381,7 +2281,12 @@ A.ajudaAcesso = () => {
   $("#m_msg").addEventListener("input", sincronizaLinks);
 };
 A.sincronizar = () => { puxarAgora(); toast("Buscando as últimas mudanças do time..."); };
-A.sair = () => { S.ui.fluxo = null; S.ui.simulando = null; S.ui.perfil = null; S.ui.pessoaId = null; S.ui.loginUser = ""; S.ui.loginPass = ""; S.ui.loginErro = null; S.ui.loginModo = "perfis"; go("login"); };
+A.sair = () => {
+  S = seed();
+  EU = null;
+  MODO = "sheets";
+  render();
+};
 A.ir = el => {
   fecharModal();
   try { go(el.dataset.view); }
@@ -2405,8 +2310,8 @@ A.maisMenu = () => {
   `);
 };
 A.abrirCompetencia = el => go("adm.locacao", { locacaoId: el.dataset.loc, cobrancaId: el.dataset.id, tab: "resumo" });
-A.filtroHist = el => { S.ui.histComp = el.dataset.c || null; save(); render(); };
-A.tab = el => { S.ui.tab = el.dataset.tab; save(); render(); };
+A.filtroHist = el => { S.ui.histComp = el.dataset.c || null; render(); };
+A.tab = el => { S.ui.tab = el.dataset.tab; render(); };
 A.abrirLocacao = el => go("adm.locacao", { locacaoId: el.dataset.id, cobrancaId: el.dataset.cob || null, tab: "resumo" });
 A.fecharModal = () => fecharModal();
 A.copiarPix = el => copiar(el.dataset.v);
@@ -2670,7 +2575,7 @@ A.editarAcessoOK = el => {
   }
   fecharModal(); save(); render(); toast("Acesso atualizado.", true);
 };
-A.relMes = el => { S.ui.relComp = el.dataset.c; save(); render(); };
+A.relMes = el => { S.ui.relComp = el.dataset.c; render(); };
 A.exportarPagamentos = el => {
   if (!pode("relatorios")) return negado("relatorios");
   const comp = el.dataset.c;
@@ -2939,8 +2844,8 @@ A.verRecibo = el => {
 };
 A.imprimirRecibo = el => { const r = S.recibos.find(x => x.id === el.dataset.id); fecharModal(); imprimir(reciboHTML(r)); };
 A.demonstrativoDoImovel = el => { S.ui.propLoc = el.dataset.id; go("prop.demonstrativo"); };
-A.propMes = el => { S.ui.propComp = el.dataset.c; save(); render(); };
-A.propFiltro = el => { S.ui.propLoc = el.dataset.id === "todos" ? null : el.dataset.id; save(); render(); };
+A.propMes = el => { S.ui.propComp = el.dataset.c; render(); };
+A.propFiltro = el => { S.ui.propLoc = el.dataset.id === "todos" ? null : el.dataset.id; render(); };
 A.verDemonstrativo = el => {
   const loc = el && el.dataset.loc && el.dataset.loc !== "todos" ? el.dataset.loc : null;
   if (loc) marca("demonstrativo");
@@ -3966,12 +3871,21 @@ A.novaLocacao = () => {
     <div class="grid2" id="m_inqnovo_wrap">
       <div class="field"><label for="m_inq">Nome do novo inquilino</label><input id="m_inq" placeholder="Nome completo"></div>
       <div class="field"><label for="m_inqcpf">CPF do inquilino</label><input id="m_inqcpf" placeholder="000.000.000-00"></div>
+      <div class="field"><label for="m_inqemail">E-mail de acesso</label><input id="m_inqemail" type="email" autocomplete="off" placeholder="nome@email.com">
+        <span class="hint">O usuário do portal será criado automaticamente com este e-mail.</span></div>
       <div class="field"><label for="m_inqtel">WhatsApp</label><input id="m_inqtel" placeholder="(54) 90000-0000"></div>
     </div>
     <div class="field"><label for="m_prop">Proprietário</label><select id="m_prop">
       ${S.pessoas.filter(p => p.papelPrevisto === "proprietario" || S.locacoes.some(l => l.proprietarioId === p.id)).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join("")}
       <option value="novo">Cadastrar novo proprietário</option></select></div>
-    <div class="field" id="m_propnovo_wrap" style="display:none"><label for="m_propnovo">Nome do novo proprietário</label><input id="m_propnovo"></div>
+    <div class="grid2" id="m_propnovo_wrap" style="display:none">
+      <div class="field"><label for="m_propnovo">Nome do novo proprietário</label><input id="m_propnovo" placeholder="Nome completo"></div>
+      <div class="field"><label for="m_propemail">E-mail de acesso</label><input id="m_propemail" type="email" autocomplete="off" placeholder="nome@email.com">
+        <span class="hint">O usuário do portal será criado automaticamente com este e-mail.</span></div>
+    </div>
+    <div class="lane" style="background:var(--surface-2);margin-bottom:12px">
+      <div class="small">Novos clientes recebem acesso com senha provisória <strong>${SENHA}</strong> e precisam trocá-la no primeiro login.</div>
+    </div>
     <h3 style="margin:14px 0 8px">Regras financeiras</h3>
     <div class="grid2">
       <div class="field"><label for="m_aluguel">Aluguel (proprietário)</label><input id="m_aluguel" type="number" step="0.01" placeholder="0,00"></div>
@@ -3985,75 +3899,272 @@ A.novaLocacao = () => {
     `<button class="btn primary block" data-act="novaLocacaoOK">Cadastrar e gerar cobrança de ${compLabel(S.competencia)}</button>`);
   ligaRecebimento("rp");
   const sel = $("#m_prop");
-  if (sel) sel.addEventListener("change", () => { $("#m_propnovo_wrap").style.display = sel.value === "novo" ? "flex" : "none"; });
+  if (sel) sel.addEventListener("change", () => { $("#m_propnovo_wrap").style.display = sel.value === "novo" ? "grid" : "none"; });
   const selI = $("#m_inqsel");
   if (selI) selI.addEventListener("change", () => { $("#m_inqnovo_wrap").style.display = selI.value === "novo" ? "grid" : "none"; });
 };
-A.novaLocacaoOK = () => {
-  const ap = $("#m_ap").value.trim(), end = $("#m_end").value.trim();
-  const novoInq = $("#m_inqsel").value === "novo";
-  const inq = novoInq ? $("#m_inq").value.trim() : "";
-  const aluguel = Number($("#m_aluguel").value || 0), taxa = Number($("#m_taxa").value || 0);
+A.novaLocacaoOK = async el => {
+  const btn = el && el.tagName === "BUTTON" ? el : null;
+  const textoOriginal = btn ? btn.textContent : "";
 
-  if (!ap || (novoInq && !inq) || !aluguel) {
+  const ap = $("#m_ap").value.trim();
+  const endereco = $("#m_end").value.trim();
+  const novoInq = $("#m_inqsel").value === "novo";
+  const nomeInq = novoInq ? $("#m_inq").value.trim() : "";
+  const cpfInq = novoInq ? $("#m_inqcpf").value.trim() : "";
+  const emailInq = novoInq ? emailNorm($("#m_inqemail").value) : "";
+  const telInq = novoInq ? $("#m_inqtel").value.trim() : "";
+  const aluguel = Number($("#m_aluguel").value || 0);
+  const taxa = Number($("#m_taxa").value || 0);
+  const diaVenc = Number($("#m_dia").value || 10);
+
+  if (!ap || (novoInq && !nomeInq) || !aluguel) {
     toast("Preencha ao menos identificação do imóvel, inquilino e aluguel.");
     return;
   }
-  if (novoInq && soDigitos($("#m_inqcpf").value).length !== 11) {
-    toast("Informe o CPF do inquilino.");
+  if (novoInq && soDigitos(cpfInq).length !== 11) {
+    toast("Informe um CPF do inquilino com 11 dígitos.");
     return;
   }
-  if (novoInq && !cpfLivre($("#m_inqcpf").value)) {
-    toast("Esse CPF já está cadastrado. Escolha a pessoa na lista.");
+  if (novoInq && !emailValido(emailInq)) {
+    toast("Informe um e-mail válido para criar o acesso do inquilino.");
     return;
   }
-
-  let pInq;
-  if (novoInq) {
-    pInq = {
-      id: uid("p"), nome: inq, cpf: $("#m_inqcpf").value.trim(),
-      email: "—", tel: $("#m_inqtel").value || "—", canal: "Portal",
-      senha: SENHA, papelPrevisto: "inquilino"
-    };
-  } else {
-    pInq = (S.pessoas || []).find(p => p.id === $("#m_inqsel").value);
-    if (!pInq) { toast("Selecione um inquilino válido."); return; }
-  }
-
-  let propId = $("#m_prop").value;
-  let novoProp = null;
-  if (propId === "novo") {
-    const nomeProp = $("#m_propnovo").value.trim();
-    if (!nomeProp) { toast("Informe o nome do proprietário."); return; }
-    novoProp = {
-      id: uid("p"), nome: nomeProp, cpf: "—", email: "—", tel: "—",
-      canal: "Portal", papelPrevisto: "proprietario"
-    };
-    propId = novoProp.id;
-  } else if (!(S.pessoas || []).some(p => p.id === propId)) {
-    toast("Selecione um proprietário válido.");
+  if (!Number.isFinite(diaVenc) || diaVenc < 1 || diaVenc > 28) {
+    toast("O dia de vencimento precisa ficar entre 1 e 28.");
     return;
   }
 
-  const im = { id: uid("i"), apelido: ap, endereco: end || "Endereço não informado", tipo: "Imóvel" };
-  S.imoveis.push(im);
-  if (novoInq) S.pessoas.push(pInq);
-  if (novoProp) S.pessoas.push(novoProp);
-  const regras = [{ desc: "Aluguel", tipo: "Aluguel", valor: aluguel, recebedor: "proprietario" }];
-  if ($("#m_cond").checked) regras.push({ desc: "Condomínio", tipo: "Condomínio", valor: 0, recebedor: "proprietario", boleto: true });
-  if (taxa) regras.push({ desc: "Taxa administrativa", tipo: "Taxa administrativa", valor: taxa, recebedor: "imobiliaria" });
-  const l = {
-    id: uid("l"), imovelId: im.id, inquilinoId: pInq.id, proprietarioId: propId,
-    inicio: hojeISO(), fim: "", diaVenc: Number($("#m_dia").value || 10), multa: "2% + 1% ao mês",
-    pixImob: S.imobiliaria.pix, recebimentoProp: leRecebimento("rp"), regras
+  const backup = {
+    usuarios: JSON.parse(JSON.stringify(S.usuarios || [])),
+    pessoas: JSON.parse(JSON.stringify(S.pessoas || [])),
+    imoveis: JSON.parse(JSON.stringify(S.imoveis || [])),
+    locacoes: JSON.parse(JSON.stringify(S.locacoes || [])),
+    cobrancas: JSON.parse(JSON.stringify(S.cobrancas || [])),
+    historico: JSON.parse(JSON.stringify(S.historico || []))
   };
-  l.pixProp = l.recebimentoProp.forma === "PIX" ? l.recebimentoProp.chave : "";
-  S.locacoes.push(l);
-  const c = achaOuCriaCobranca(l.id, S.competencia);
-  log(l.id, S.competencia, `Locação cadastrada e cobrança de ${compLabel(S.competencia)} gerada a partir das regras financeiras.`, origemAtual());
-  marca("locacao");
-  fecharModal(); save(); go("adm.locacao", { locacaoId: l.id, cobrancaId: c.id, tab: "resumo" });
-  toast("Locação cadastrada e cobrança gerada.", true);
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Salvando locação…";
+  }
+
+  try {
+    // -------- INQUILINO --------
+    let pInq;
+    if (novoInq) {
+      pInq = (S.pessoas || []).find(p => cpfIgual(p.cpf, cpfInq)) || null;
+
+      if (pInq) {
+        if (!emailLivre(emailInq, pInq.id)) {
+          throw new Error("O e-mail do inquilino já está vinculado a outro usuário.");
+        }
+        pInq.nome = nomeInq || pInq.nome;
+        pInq.email = emailInq;
+        pInq.tel = telInq || pInq.tel || "—";
+        pInq.papelPrevisto = "inquilino";
+        pInq.canal = pInq.canal || "Portal";
+
+        if (!pInq.usuarioId) {
+          pInq.usuarioId = "u_" + pInq.id;
+          pInq.senha = SENHA;
+          pInq.senhaProvisoria = true;
+        }
+      } else {
+        if (!emailLivre(emailInq, null)) {
+          throw new Error("O e-mail do inquilino já está em uso.");
+        }
+        const pid = uid("p");
+        pInq = {
+          id: pid,
+          usuarioId: "u_" + pid,
+          nome: nomeInq,
+          cpf: cpfInq,
+          email: emailInq,
+          tel: telInq || "—",
+          canal: "Portal",
+          senha: SENHA,
+          senhaProvisoria: true,
+          papelPrevisto: "inquilino",
+          criadoEm: agora()
+        };
+        S.pessoas.push(pInq);
+      }
+    } else {
+      pInq = (S.pessoas || []).find(p => p.id === $("#m_inqsel").value);
+      if (!pInq) throw new Error("Selecione um inquilino válido.");
+    }
+
+    // -------- PROPRIETÁRIO --------
+    let propId = $("#m_prop").value;
+    if (propId === "novo") {
+      const nomeProp = $("#m_propnovo").value.trim();
+      const emailProp = emailNorm($("#m_propemail").value);
+
+      if (!nomeProp) throw new Error("Informe o nome do proprietário.");
+      if (!emailValido(emailProp)) throw new Error("Informe um e-mail válido para criar o acesso do proprietário.");
+
+      let existenteProp =
+        (S.pessoas || []).find(p => emailNorm(p.email) === emailProp) ||
+        (S.pessoas || []).find(p =>
+          String(p.nome || "").trim().toLowerCase() === nomeProp.toLowerCase() &&
+          (p.papelPrevisto === "proprietario" || (S.locacoes || []).some(l => l.proprietarioId === p.id))
+        );
+
+      if (existenteProp) {
+        if (!emailLivre(emailProp, existenteProp.id)) {
+          throw new Error("O e-mail do proprietário já está vinculado a outro usuário.");
+        }
+        existenteProp.nome = nomeProp || existenteProp.nome;
+        existenteProp.email = emailProp;
+        existenteProp.papelPrevisto = "proprietario";
+        existenteProp.canal = existenteProp.canal || "Portal";
+
+        if (!existenteProp.usuarioId) {
+          existenteProp.usuarioId = "u_" + existenteProp.id;
+          existenteProp.senha = SENHA;
+          existenteProp.senhaProvisoria = true;
+        }
+        propId = existenteProp.id;
+      } else {
+        if (!emailLivre(emailProp, null)) {
+          throw new Error("O e-mail do proprietário já está em uso.");
+        }
+        const pid = uid("p");
+        const novoProp = {
+          id: pid,
+          usuarioId: "u_" + pid,
+          nome: nomeProp,
+          cpf: "—",
+          email: emailProp,
+          tel: "—",
+          canal: "Portal",
+          senha: SENHA,
+          senhaProvisoria: true,
+          papelPrevisto: "proprietario",
+          criadoEm: agora()
+        };
+        S.pessoas.push(novoProp);
+        propId = novoProp.id;
+      }
+    } else if (!(S.pessoas || []).some(p => p.id === propId)) {
+      throw new Error("Selecione um proprietário válido.");
+    }
+
+    // -------- IMÓVEL --------
+    let im = (S.imoveis || []).find(i =>
+      String(i.apelido || "").trim().toLowerCase() === ap.toLowerCase() &&
+      String(i.endereco || "").trim().toLowerCase() === (endereco || "Endereço não informado").toLowerCase() &&
+      !(S.locacoes || []).some(l => l.imovelId === i.id)
+    );
+
+    if (!im) {
+      im = {
+        id: uid("i"),
+        apelido: ap,
+        endereco: endereco || "Endereço não informado",
+        tipo: "Imóvel",
+        criadoEm: agora()
+      };
+      S.imoveis.push(im);
+    }
+
+    const jaExiste = (S.locacoes || []).find(l =>
+      l.imovelId === im.id &&
+      l.inquilinoId === pInq.id &&
+      l.proprietarioId === propId
+    );
+    if (jaExiste) throw new Error("Esta locação já está cadastrada.");
+
+    const regras = [
+      { desc: "Aluguel", tipo: "Aluguel", valor: aluguel, recebedor: "proprietario" }
+    ];
+    if ($("#m_cond").checked) {
+      regras.push({
+        desc: "Condomínio",
+        tipo: "Condomínio",
+        valor: 0,
+        recebedor: "proprietario",
+        boleto: true
+      });
+    }
+    if (taxa) {
+      regras.push({
+        desc: "Taxa administrativa",
+        tipo: "Taxa administrativa",
+        valor: taxa,
+        recebedor: "imobiliaria"
+      });
+    }
+
+    const recebimentoProp = leRecebimento("rp");
+    const l = {
+      id: uid("l"),
+      imovelId: im.id,
+      inquilinoId: pInq.id,
+      proprietarioId: propId,
+      inicio: hojeISO(),
+      fim: "",
+      diaVenc,
+      multa: "2% + 1% ao mês",
+      pixImob: S.imobiliaria.pix,
+      recebimentoProp,
+      regras,
+      criadoEm: agora()
+    };
+    l.pixProp = recebimentoProp.forma === "PIX" ? recebimentoProp.chave : "";
+
+    S.locacoes.push(l);
+
+    const c = achaOuCriaCobranca(l.id, S.competencia);
+    log(
+      l.id,
+      S.competencia,
+      `Locação cadastrada; acessos do inquilino e do proprietário conferidos; cobrança de ${compLabel(S.competencia)} gerada.`,
+      origemAtual()
+    );
+    marca("locacao");
+    marca("usuarios");
+
+    // A tela só conclui depois que Pessoas, Usuários, Imóvel, Locação e
+    // Cobrança estiverem de fato gravados no Sheets.
+    const resultadoSave = await saveAgora();
+
+    const locSalva = (S.locacoes || []).find(x => x.id === l.id);
+    if (!locSalva) throw new Error("O Sheets confirmou a gravação, mas a locação não voltou na leitura.");
+
+    fecharModal();
+    go("adm.locacao", { locacaoId: l.id, cobrancaId: c.id, tab: "resumo" });
+
+    const envios = Array.isArray(resultadoSave && resultadoSave.welcomeEmails) ? resultadoSave.welcomeEmails : [];
+    const falhasEmail = envios.filter(x => x && x.ok === false);
+
+    if (falhasEmail.length) {
+      toast("Locação e acessos foram salvos, mas " + falhasEmail.length + " e-mail(s) de boas-vindas não puderam ser enviados.");
+    } else if (envios.length) {
+      toast("Locação e acessos criados. E-mail de boas-vindas enviado.", true);
+    } else {
+      toast("Locação e acessos criados e confirmados na planilha.", true);
+    }
+  } catch (e) {
+    S.usuarios = backup.usuarios;
+    S.pessoas = backup.pessoas;
+    S.imoveis = backup.imoveis;
+    S.locacoes = backup.locacoes;
+    S.cobrancas = backup.cobrancas;
+    S.historico = backup.historico;
+
+    MODO = "sheets";
+    pintaSelo();
+
+    const msg = e && e.message ? e.message : "Não foi possível cadastrar a locação.";
+    toast("Não foi possível salvar a locação: " + msg);
+  } finally {
+    if (btn && document.body.contains(btn)) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
 };
 
 /* ============ eventos ============ */
@@ -4068,7 +4179,7 @@ document.addEventListener("change", e => {
   if (g && g.tagName === "SELECT" && g.dataset.act !== "filtro" && A[g.dataset.act]) { A[g.dataset.act](g); return; }
   const el = e.target.closest("[data-act='filtro']"); if (!el) return;
   S.ui.filtro = Object.assign({}, S.ui.filtro, { [el.dataset.k]: el.value });
-  save(); render();
+  render();
 });
 document.addEventListener("input", e => {
   if (e.target && e.target.id === "lg_user") {
@@ -4083,7 +4194,7 @@ document.addEventListener("input", e => {
   if (cfg) { A[cfg.dataset.act](cfg); return; }
   const el = e.target.closest("[data-act='filtro']"); if (!el || el.tagName !== "INPUT") return;
   S.ui.filtro = Object.assign({}, S.ui.filtro, { [el.dataset.k]: el.value });
-  save(); render();
+  render();
   const again = document.getElementById(el.id);
   if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
 });
@@ -4109,10 +4220,6 @@ function render() {
 
 S = load();
 if (!S.ui) S.ui = { perfil: null, pessoaId: null, view: "login", tab: "resumo", filtro: {} };
-try {
-  const uiSalva = JSON.parse(localStorage.getItem(KEY + "_ui") || "null");
-  if (uiSalva && uiSalva.ui) S.ui = Object.assign(S.ui, uiSalva.ui);
-} catch (e) { }
 render();
 iniciarSync();
 
